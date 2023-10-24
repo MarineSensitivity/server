@@ -57,21 +57,21 @@ services:
   tile:
     container_name: tile
     environment:
-      DATABASE_URL: postgres://admin:$PASSWORD@postgis:5432/gis
+      DATABASE_URL: postgres://admin:$PASSWORD@postgis:5432/msens
     image: pramsey/pg_tileserv:latest
     depends_on:
       - postgis
     ports:
       - 7800:7800
 
-  rest:
-    container_name: rest
-    environment:
-      PGRST_DB_URI: postgres://ro_user:$ROPASS@postgis:5432/msens
-      PGRST_OPENAPI_SERVER_PROXY_URI: http://127.0.0.1:3000
-      PGRST_DB_ANON_ROLE: ro_user  # db-anon-role
-    image: postgrest/postgrest
-    depends_on:
-      - postgis
-    ports:
-      - "3000:3000"
+  # rest:
+  #   container_name: rest
+  #   environment:
+  #     PGRST_DB_URI: postgres://ro_user:$ROPASS@postgis:5432/msens
+  #     PGRST_OPENAPI_SERVER_PROXY_URI: http://127.0.0.1:3000
+  #     PGRST_DB_ANON_ROLE: ro_user  # db-anon-role
+  #   image: postgrest/postgrest
+  #   depends_on:
+  #     - postgis
+  #   ports:
+  #     - "3000:3000"
