@@ -41,9 +41,22 @@ tmpfs           100M  4.1k  100M   1% /run/user/1000
 
 
 ```bash
+# install docker-compose
 sudo apt install docker-compose
 
+# clone server repo
 git clone https://github.com/MarineSensitivities/server.git
 cd server
-docker-compose up -d
+
+# add password, used as $PASSWORD in docker-compose.yml
+echo 'PASSWORD=******' > .env
+
+# launch docker instances
+sudo docker-compose up -d
 ```
+
+Doh! too big for free tier:
+
+```
+ no space left on device
+ ```
