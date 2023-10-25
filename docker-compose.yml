@@ -54,15 +54,15 @@ services:
     ports:
       - 5432:5432
 
-  tile:
-    container_name: tile
-    environment:
-      DATABASE_URL: postgres://admin:$PASSWORD@postgis:5432/msens
-    image: pramsey/pg_tileserv:latest
-    depends_on:
-      - postgis
-    ports:
-      - 7800:7800
+  # tile:
+  #   container_name: tile
+  #   environment:
+  #     DATABASE_URL: postgres://admin:$PASSWORD@postgis:5432/msens
+  #   image: pramsey/pg_tileserv:latest
+  #   depends_on:
+  #     - postgis
+  #   ports:
+  #     - 7800:7800
 
   # rest:
   #   container_name: rest

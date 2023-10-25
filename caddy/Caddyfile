@@ -1,24 +1,20 @@
-api.marinesensitivies.org {
+# caddy fmt --overwrite Caddyfile
+
+# marinemaps.org ----
+
+api.marinemaps.org {
 	reverse_proxy rstudio:8888
 }
 
-file.marinesensitivies.org {
+file.marinemaps.org {
 	root * /share/public
 	file_server
 }
 
-rest.calcofi.io {
-	reverse_proxy pg_rest:3000
-}
-
-rstudio.marinesensitivies.org {
+rstudio.marinemaps.org {
 	reverse_proxy rstudio:8787
 }
 
-shiny.marinesensitivies.org {
+shiny.marinemaps.org {
 	reverse_proxy rstudio:3838
-}
-
-tile.marinesensitivies.org {
-	reverse_proxy tilecache:6081
 }
