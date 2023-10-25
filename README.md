@@ -11,7 +11,7 @@ ssh -i $pem ubuntu@msens1.marinesensitivities.org
 
 ## Reference
 
-- [Server Setup](https://github.com/MarineSensitivities/server/wiki/Server-Setup) on AWS as EC2 instance
+- [Server Setup](https://github.com/MarineSensitivities/server/wiki/Server-Setup) on AWS as EC2 instance at allocated IP address `100.25.173.0`
 
 
 
