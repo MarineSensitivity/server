@@ -50,6 +50,23 @@ services:
     ports:
       - 5432:5432
 
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4:latest
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ben@ecoquants.com
+      PGADMIN_DEFAULT_PASSWORD: $PASSWORD
+      PGADMIN_LISTEN_PORT: 8080
+    ports:
+      - 8080:8080
+    volumes:
+      - ./share/pgadmin:/var/lib/pgadmin
+    links:
+      - "database:pgsql-server"
+    depends_on:
+      - postgis
+
   pgbkups:
     container_name: pgbkups
     image: prodrigestivill/postgres-backup-local
