@@ -1,20 +1,20 @@
 # caddy fmt --overwrite Caddyfile
 
-# marinemaps.org ----
+# marinesensitivities.org ----
 
-api.marinemaps.org {
+api.marinesensitivities.org {
 	reverse_proxy rstudio:8888
 }
 
-file.marinemaps.org {
+file.marinesensitivities.org {
 	root * /share/public
 	file_server
 }
 
-rstudio.marinemaps.org {
+rstudio.marinesensitivities.org {
 	reverse_proxy rstudio:8787
 }
 
-shiny.marinemaps.org {
+shiny.marinesensitivities.org {
 	reverse_proxy rstudio:3838
 }

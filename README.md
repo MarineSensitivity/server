@@ -5,13 +5,18 @@ server setup for R Shiny apps, RStudio IDE, R Plumber API, PostGIS database, pg_
 ## Connect
 
 ```bash
+# ssh
 pem='/Users/bbest/My Drive/private/msens_key_pair.pem'
 ssh -i $pem ubuntu@msens1.marinesensitivities.org
+
+# $PASSWORD
+cat '/Users/bbest/My Drive/private/msens_server_env-password.txt'
 ```
 
 ## Reference
 
 - [Server Setup](https://github.com/MarineSensitivities/server/wiki/Server-Setup) on AWS as EC2 instance at allocated IP address `100.25.173.0`
+
 
 
 
