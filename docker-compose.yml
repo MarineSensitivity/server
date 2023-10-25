@@ -58,10 +58,11 @@ services:
       PGADMIN_DEFAULT_EMAIL: ben@ecoquants.com
       PGADMIN_DEFAULT_PASSWORD: $PASSWORD
       PGADMIN_LISTEN_PORT: 8080
+      PGADMIN_CONFIG_CONFIG_DATABASE_URI: postgresql://admin:$PASSWORD@postgis:5432/msens
     ports:
       - 8080:8080
     volumes:
-      - ./share/pgadmin:/var/lib/pgadmin
+      - /share/pgadmin:/var/lib/pgadmin
     links:
       - "database:pgsql-server"
     depends_on:
@@ -94,7 +95,7 @@ services:
   tile:
     container_name: tile
     environment:
-      DATABASE_URL: postgres://admin:$PASSWORD@postgis:5432/msens
+      DATABASE_URL: postgresql://admin:$PASSWORD@postgis:5432/msens
     image: pramsey/pg_tileserv:latest
     depends_on:
       - postgis
@@ -105,7 +106,7 @@ services:
     container_name: rest
     environment:
       # TODO: create read-only user & pass in db
-      PGRST_DB_URI: postgres://anon:$ANONPASSWORD@postgis:5432/msens
+      PGRST_DB_URI: postgresql://anon:$ANONPASSWORD@postgis:5432/msens
       PGRST_OPENAPI_SERVER_PROXY_URI: http://127.0.0.1:3000
       PGRST_DB_ANON_ROLE: anon  # db-anon-role
     image: postgrest/postgrest
