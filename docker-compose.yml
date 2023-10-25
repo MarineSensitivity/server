@@ -38,6 +38,7 @@ services:
       POSTGRES_DB: msens
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: $PASSWORD
+      PGDATA: /share/postgis/data
     volumes:
       # all files in /docker-entrypoint-initdb.dare automatically executed
       #  in alphabetical order on container creation
