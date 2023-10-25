@@ -41,7 +41,7 @@ services:
     volumes:
       # all files in /docker-entrypoint-initdb.dare automatically executed
       #  in alphabetical order on container creation
-      - ./postgis/init-scripts:/docker-entrypoint-initdb.d  # add user anon
+      - ./postgis/init.sh:/docker-entrypoint-initdb.d/init.sh  # add user anon
       - /share:/share
       - /share/postgis:/var/lib/postgresql
     restart: unless-stopped
