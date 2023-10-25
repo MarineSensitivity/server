@@ -15,9 +15,18 @@ pgadmin.marinesensitivities.org {
 	reverse_proxy rstudio:8080
 }
 
+rest.calcofi.io {
+  reverse_proxy pg_rest:3000
+}
+
 rstudio.marinesensitivities.org {
 	reverse_proxy rstudio:8787
 }
+
+tile.calcofi.io {
+  reverse_proxy pg_tileserv:7800
+}
+
 
 shiny.marinesensitivities.org {
 	reverse_proxy rstudio:3838
