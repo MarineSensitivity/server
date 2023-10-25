@@ -12,7 +12,7 @@ file.marinesensitivities.org {
 }
 
 pgadmin.marinesensitivities.org {
-	reverse_proxy rstudio:8080
+	reverse_proxy pgadmin:8080
 }
 
 rest.calcofi.io {
