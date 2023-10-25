@@ -1,14 +1,7 @@
 version: "3.7"
 
-volumes:
-  caddy_data:
-  caddy_config:
-  shiny_apps:
-  postgis_data:
-
 services:
   caddy:
-    container_name: caddy
     image: caddy:latest
     ports:
       - "80:80"
@@ -16,13 +9,12 @@ services:
     restart: unless-stopped
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
       - /share:/share
+      - /share/caddy/data:/data
+      - /share/caddy/config:/config
 
   rstudio:
-    container_name: rstudio
-    build: ./rstudio-shiny
+    build: ./rstudio
     environment:
       ROOT: 'true'
       USER: admin
@@ -35,43 +27,66 @@ services:
     restart: unless-stopped
     volumes:
       - /share:/share
-      - shiny_apps:/srv/shiny-server
+      - /share/shiny_apps:/srv/shiny-server
 
   postgis:
-    container_name: postgis
     image: postgis/postgis:latest
     environment:
       POSTGRES_DB: msens
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: $PASSWORD
     volumes:
-      - postgis_data:/var/lib/postgresql
-      - ./postgis/postgresql.conf:/etc/postgresql/postgresql.conf
+      # all files in /docker-entrypoint-initdb.dare automatically executed
+      #  in alphabetical order on container creation
+      - ./postgis/init-scripts:/docker-entrypoint-initdb.d  # add user anon
       - /share:/share
+      - /share/postgis:/var/lib/postgresql
     restart: unless-stopped
     healthcheck:
       test: 'exit 0'
     ports:
       - 5432:5432
 
-  # tile:
-  #   container_name: tile
-  #   environment:
-  #     DATABASE_URL: postgres://admin:$PASSWORD@postgis:5432/msens
-  #   image: pramsey/pg_tileserv:latest
-  #   depends_on:
-  #     - postgis
-  #   ports:
-  #     - 7800:7800
+  pgbkups:
+    image: prodrigestivill/postgres-backup-local
+    restart: always
+    user: postgres:postgres # Optional: see below
+    volumes:
+      - /share/postgis_backups:/backups
+      # sudo mkdir /share/postgis_backups; sudo chown -R 999:999 /share/postgis_backups
+    links:
+      - postgis
+    depends_on:
+      - postgis
+    environment:
+      - POSTGRES_HOST=postgis
+      - POSTGRES_DB=msens
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=$PASSWORD
+      - POSTGRES_EXTRA_OPTS=-Z6 --blobs
+      - SCHEDULE=@daily
+      - BACKUP_KEEP_DAYS=7
+      - BACKUP_KEEP_WEEKS=4
+      - BACKUP_KEEP_MONTHS=6
+      - HEALTHCHECK_PORT=8080
 
-  # rest:
-  #   container_name: rest
-  #   environment:
-  #     PGRST_DB_URI: postgres://ro_user:$ROPASS@postgis:5432/msens
-  #     PGRST_OPENAPI_SERVER_PROXY_URI: http://127.0.0.1:3000
-  #     PGRST_DB_ANON_ROLE: ro_user  # db-anon-role
-  #   image: postgrest/postgrest
-  #   depends_on:
-  #     - postgis
-  #   ports:
-  #     - "3000:3000"
+  tile:
+    environment:
+      DATABASE_URL: postgres://admin:$PASSWORD@postgis:5432/msens
+    image: pramsey/pg_tileserv:latest
+    depends_on:
+      - postgis
+    ports:
+      - 7800:7800
+
+  rest:
+    environment:
+      # TODO: create read-only user & pass in db
+      PGRST_DB_URI: postgres://anon:$ANONPASSWORD@postgis:5432/msens
+      PGRST_OPENAPI_SERVER_PROXY_URI: http://127.0.0.1:3000
+      PGRST_DB_ANON_ROLE: anon  # db-anon-role
+    image: postgrest/postgrest
+    depends_on:
+      - postgis
+    ports:
+      - "3000:3000"
