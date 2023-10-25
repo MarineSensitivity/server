@@ -15,7 +15,7 @@ pgadmin.marinesensitivities.org {
 	reverse_proxy pgadmin:8080
 }
 
-rest.calcofi.io {
+rest.marinesensitivities.org {
   reverse_proxy rest:3000
 }
 
@@ -23,7 +23,7 @@ rstudio.marinesensitivities.org {
 	reverse_proxy rstudio:8787
 }
 
-tile.calcofi.io {
+tile.marinesensitivities.org {
   reverse_proxy tile:7800
 }
 
