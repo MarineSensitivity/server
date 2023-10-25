@@ -1,9 +1,8 @@
 #!/bin/bash
-set -e
 
-psql -v ON_ERROR_STOP=1 --username "admin" --dbname "msens" <<-EOSQL
-    CREATE USER anon WITH PASSWORD '$ANONPASSWORD';
+psql --username "admin" --dbname "msens" <<-END
+    CREATE USER anon WITH PASSWORD '${ANON_PASSWORD}';
     GRANT CONNECT ON DATABASE msens TO anon;
     GRANT USAGE ON SCHEMA public TO anon;
     GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon;
-EOSQL
+END

@@ -20,7 +20,7 @@ services:
     environment:
       ROOT: 'true'
       USER: admin
-      PASSWORD: $PASSWORD
+      PASSWORD: ${PASSWORD}
       ADD: shiny
     ports:
       - 8787:8787  # rstudio
@@ -37,7 +37,8 @@ services:
     environment:
       POSTGRES_DB: msens
       POSTGRES_USER: admin
-      POSTGRES_PASSWORD: $PASSWORD
+      POSTGRES_PASSWORD: ${PASSWORD}
+      ANON_PASSWORD: ${ANON_PASSWORD}
       PGDATA: /share/postgis/data
     volumes:
       # all files in /docker-entrypoint-initdb.dare automatically executed
@@ -57,7 +58,7 @@ services:
     restart: always
     environment:
       PGADMIN_DEFAULT_EMAIL: ben@ecoquants.com
-      PGADMIN_DEFAULT_PASSWORD: $PASSWORD
+      PGADMIN_DEFAULT_PASSWORD: ${PASSWORD}
       PGADMIN_LISTEN_PORT: 8080
       PGADMIN_CONFIG_CONFIG_DATABASE_URI: 'postgresql://admin:$PASSWORD@postgis:5432/msens'
     ports:
@@ -83,7 +84,7 @@ services:
       - POSTGRES_HOST=postgis
       - POSTGRES_DB=msens
       - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=$PASSWORD
+      - POSTGRES_PASSWORD=${PASSWORD}
       - POSTGRES_EXTRA_OPTS=-Z6 --blobs
       - SCHEDULE=@daily
       - BACKUP_KEEP_DAYS=7
@@ -94,7 +95,7 @@ services:
   tile:
     container_name: tile
     environment:
-      DATABASE_URL: 'postgresql://admin:$PASSWORD@postgis:5432/msens'
+      DATABASE_URL: 'postgresql://admin:${PASSWORD}@postgis:5432/msens'
     image: pramsey/pg_tileserv:latest
     depends_on:
       - postgis
@@ -105,7 +106,7 @@ services:
     container_name: rest
     environment:
       # TODO: create read-only user & pass in db
-      PGRST_DB_URI: 'postgresql://anon:$ANONPASSWORD@postgis:5432/msens'
+      PGRST_DB_URI: 'postgresql://anon:${ANON_PASSWORD}@postgis:5432/msens'
       PGRST_OPENAPI_SERVER_PROXY_URI: http://127.0.0.1:3000
       PGRST_DB_ANON_ROLE: anon  # db-anon-role
     image: postgrest/postgrest
