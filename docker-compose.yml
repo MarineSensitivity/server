@@ -63,8 +63,6 @@ services:
       - 8080:8080
     volumes:
       - /share/pgadmin:/var/lib/pgadmin
-    links:
-      - "database:pgsql-server"
     depends_on:
       - postgis
 
