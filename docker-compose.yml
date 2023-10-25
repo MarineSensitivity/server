@@ -1,7 +1,8 @@
-version: "3.7"
+version: "3.9"
 
 services:
   caddy:
+    container_name: caddy
     image: caddy:latest
     ports:
       - "80:80"
@@ -14,6 +15,7 @@ services:
       - /share/caddy/config:/config
 
   rstudio:
+    container_name: rstudio
     build: ./rstudio
     environment:
       ROOT: 'true'
@@ -30,6 +32,7 @@ services:
       - /share/shiny_apps:/srv/shiny-server
 
   postgis:
+    container_name: postgis
     image: postgis/postgis:latest
     environment:
       POSTGRES_DB: msens
@@ -48,6 +51,7 @@ services:
       - 5432:5432
 
   pgbkups:
+    container_name: pgbkups
     image: prodrigestivill/postgres-backup-local
     restart: always
     user: postgres:postgres # Optional: see below
@@ -71,6 +75,7 @@ services:
       - HEALTHCHECK_PORT=8080
 
   tile:
+    container_name: tile
     environment:
       DATABASE_URL: postgres://admin:$PASSWORD@postgis:5432/msens
     image: pramsey/pg_tileserv:latest
@@ -80,6 +85,7 @@ services:
       - 7800:7800
 
   rest:
+    container_name: rest
     environment:
       # TODO: create read-only user & pass in db
       PGRST_DB_URI: postgres://anon:$ANONPASSWORD@postgis:5432/msens
