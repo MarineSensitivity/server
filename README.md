@@ -19,11 +19,19 @@ The server software is for setting up web services outside those of Github (e.g.
   [More info..](https://www.pgadmin.org/)
 
 - [**api**](https://api.marinesensitivities.org)\
-  _custom API using R plumber_\
+  _custom API: using R plumber_\
   <img width="600" alt="Screenshot 2023-10-26 at 1 02 05 PM" src="https://github.com/MarineSensitivities/server/assets/2837257/3ff49d8c-8569-4111-9e63-2998960ea192">\
   [More info..](https://www.rplumber.io/)
+  
+- [**swagger**](https://swagger.marinesensitivities.org)\
+  _generic database API: using PostGREST\
+  <img width="600" alt="Screenshot 2023-10-26 at 1 02 05 PM" src="https://github.com/MarineSensitivities/server/assets/2837257/787cc7b6-b1cd-4c1a-b896-4f17777b1d7d">\
+  [More info..](https://postgrest.org/en/stable/)
 
--served  for R Shiny apps, RStudio IDE, R Plumber API, PostGIS database, pg_tileserv
+- [**tile**](https://tile.marinesensitivities.org)\
+  _spatial database API: using pg_tileserv for serving vector tiles\
+  <img width="667" alt="Screenshot 2023-10-26 at 1 46 00 PM" src="https://github.com/MarineSensitivities/server/assets/2837257/73398fe2-4b09-4ec9-8b14-2ef25165ecf4">\
+  [More info..](https://postgrest.org/en/stable/)
 
 
 ## Connect
