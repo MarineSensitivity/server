@@ -23,6 +23,10 @@ rstudio.marinesensitivities.org {
 	reverse_proxy rstudio:8787
 }
 
+swagger.marinesensitivities.org {
+	reverse_proxy swagger:8088
+}
+
 tile.marinesensitivities.org {
   reverse_proxy tile:7800
 }
