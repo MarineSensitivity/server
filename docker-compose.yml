@@ -125,4 +125,3 @@ services:
       - "8080"
     environment:
       API_URL: https://rest.MarineSensitivities.org/
-      # API_URL: https://localhost:3000/
