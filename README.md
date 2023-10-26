@@ -19,8 +19,8 @@ The server software is for setting up web services outside those of Github (e.g.
   [More info..](https://www.pgadmin.org/)
 
 - [**api**](https://api.marinesensitivities.org)\
-  _R Plumber custom API using OpenAPI standard (formerly called Swagger)_\
-  <img width="600" alt="Screenshot 2023-10-26 at 12 42 46 PM" src="https://github.com/MarineSensitivities/server/assets/2837257/4439a844-65c9-4ea2-9685-8ba6d4b2cd29">\
+  _custom API using R plumber_\
+  <img width="600" alt="Screenshot 2023-10-26 at 1 02 05 PM" src="https://github.com/MarineSensitivities/server/assets/2837257/3ff49d8c-8569-4111-9e63-2998960ea192">\
   [More info..](https://www.rplumber.io/)
 
 -served  for R Shiny apps, RStudio IDE, R Plumber API, PostGIS database, pg_tileserv
