@@ -12,7 +12,7 @@ file.marinesensitivities.org {
 }
 
 pgadmin.marinesensitivities.org {
-	reverse_proxy pgadmin:8080
+	reverse_proxy pgadmin:8088
 }
 
 rest.marinesensitivities.org {
@@ -24,7 +24,7 @@ rstudio.marinesensitivities.org {
 }
 
 swagger.marinesensitivities.org {
-	reverse_proxy swagger:8088
+	reverse_proxy swagger:8080
 }
 
 tile.marinesensitivities.org {

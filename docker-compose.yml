@@ -59,10 +59,10 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: ben@ecoquants.com
       PGADMIN_DEFAULT_PASSWORD: ${PASSWORD}
-      PGADMIN_LISTEN_PORT: 8080
+      PGADMIN_LISTEN_PORT: 8088
       PGADMIN_CONFIG_CONFIG_DATABASE_URI: "'postgresql://admin:$PASSWORD@postgis:5432/msens'"
     ports:
-      - 8080:8080
+      - 8088:8088
     volumes:
       - /share/pgadmin:/var/lib/pgadmin
     depends_on:
@@ -90,7 +90,7 @@ services:
       - BACKUP_KEEP_DAYS=7
       - BACKUP_KEEP_WEEKS=4
       - BACKUP_KEEP_MONTHS=6
-      - HEALTHCHECK_PORT=8080
+      - HEALTHCHECK_PORT=8088
 
   tile:
     container_name: tile
@@ -120,9 +120,9 @@ services:
     depends_on:
       - rest
     ports:
-      - "8088:8080"
+      - "8080:8080"
     expose:
-      - "8088"
+      - "8080"
     environment:
       # API_URL: http://rest.MarineSensitivities.org/
       API_URL: http://localhost:3000/
