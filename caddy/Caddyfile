@@ -1,36 +1,36 @@
 # caddy fmt --overwrite Caddyfile
 
-# marinesensitivities.org ----
+# marinesensitivity.org ----
 
-api.marinesensitivities.org {
+api.marinesensitivity.org {
 	reverse_proxy rstudio:8888
 }
 
-file.marinesensitivities.org {
+file.marinesensitivity.org {
 	root * /share/public
 	file_server
 }
 
-pgadmin.marinesensitivities.org {
+pgadmin.marinesensitivity.org {
 	reverse_proxy pgadmin:8088
 }
 
-rest.marinesensitivities.org {
+rest.marinesensitivity.org {
   reverse_proxy rest:3000
 }
 
-rstudio.marinesensitivities.org {
+rstudio.marinesensitivity.org {
 	reverse_proxy rstudio:8787
 }
 
-swagger.marinesensitivities.org {
+swagger.marinesensitivity.org {
 	reverse_proxy swagger:8080
 }
 
-tile.marinesensitivities.org {
+tile.marinesensitivity.org {
   reverse_proxy tile:7800
 }
 
-shiny.marinesensitivities.org {
+shiny.marinesensitivity.org {
 	reverse_proxy rstudio:3838
 }
