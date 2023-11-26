@@ -41,6 +41,10 @@ The server software is for setting up web services outside those of Github (e.g.
 pem='/Users/bbest/My Drive/private/msens_key_pair.pem'
 ssh -i $pem ubuntu@msens1.marinesensitivity.org
 
+# ssh with tunneling to postgis database
+pem='/Users/bbest/My Drive/private/msens_key_pair.pem'
+ssh -i $pem -L 5432:localhost:5432 ubuntu@msens1.marinesensitivity.org
+
 # $PASSWORD
 cat '/Users/bbest/My Drive/private/msens_server_env-password.txt'
 ```
