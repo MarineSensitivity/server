@@ -2,6 +2,27 @@
 
 The server software is for setting up web services outside those of Github (e.g. serving website, docs and R package) using Docker (see the [docker-compose.yml](https://github.com/MarineSensitivity/server/blob/main/docker-compose.yml); with reverse proxying from subdomains to ports by [Caddy](https://caddyserver.com)):
 
+## Quick Start
+
+```bash
+# setup folders
+mkdir -p /share/github
+
+# clone the repository
+cd /share/github
+git clone https://github.com/MarineSensitivity/server
+
+# set environment variables: echo echo
+cd /share/github/server
+echo 'PASSWORD=*******' > .env
+
+# docker launch as daemon
+docker compose up -d
+```
+
+
+## Services
+
 - [**rstudio**](https://rstudio.marinesensitivity.org)\
   _integrated development environment (IDE) to code and debug directly on the server_
   <img width="600" src="https://github.com/MarineSensitivity/server/assets/2837257/cfd04553-15a7-4cd9-9206-32bec377750a">\
