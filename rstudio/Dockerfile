@@ -1,4 +1,5 @@
-FROM rocker/geospatial:latest
+#FROM rocker/geospatial:latest
+FROM rocker/geospatial:dev-osgeo
 
 # https://github.com/rocker-org/rocker-versioned2/tree/master/scripts
 RUN /rocker_scripts/install_shiny_server.sh
