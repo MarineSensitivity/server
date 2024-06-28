@@ -88,6 +88,12 @@ sudo docker compose up -d
 - [Server Setup](https://github.com/MarineSensitivity/server/wiki/Server-Setup) on AWS as EC2 instance at allocated IP address `100.25.173.0`
 
 
+## 2024-06-17
 
+- [CRAN as Ubuntu Binaries - r2u](https://eddelbuettel.github.io/r2u/#github-actions)
+
+```bash
+sudo apt upgrade
+```
 
 
