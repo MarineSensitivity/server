@@ -147,11 +147,8 @@ services:
   titiler:
     container_name: titiler
     image: ghcr.io/developmentseed/titiler:latest
-    depends_on:
-      - rest
-    ports:
-      - "8080:8080"
-    expose:
-      - "8080"
     environment:
-      API_URL: https://rest.MarineSensitivity.org/
+      PORT: 8000
+      # WORKERS_PER_CORE: 1
+    ports:
+      - "8000:8000"
