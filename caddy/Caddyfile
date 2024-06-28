@@ -34,6 +34,10 @@ tile.marinesensitivity.org {
   reverse_proxy tile:7800
 }
 
+tilecache.marinesensitivity.org {
+  reverse_proxy tile:6081
+}
+
 shiny.marinesensitivity.org {
 	reverse_proxy rstudio:3838
 }
