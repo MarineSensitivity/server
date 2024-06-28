@@ -35,11 +35,11 @@ tile.marinesensitivity.org {
 }
 
 tilecache.marinesensitivity.org {
-  reverse_proxy tile:6081
+  reverse_proxy tilecache:6081
 }
 
 titiler.marinesensitivity.org {
-  reverse_proxy tile:8000
+  reverse_proxy titiler:8000
 }
 
 shiny.marinesensitivity.org {
