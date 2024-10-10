@@ -1,21 +1,17 @@
-# caddy fmt --overwrite Caddyfile
-
-# marinesensitivity.org ----
-
 api.marinesensitivity.org {
-	reverse_proxy rstudio:8888
+  reverse_proxy rstudio:8888
 }
 
 file.marinesensitivity.org {
-	root * /share/public
-	file_server browse {
-	  # serve *.zst, *.br or *.gz if file exists and client supports precompressed files
-	  precompressed zstd br gzip
+  root * /share/public
+  file_server browse {
+    # serve *.zst, *.br or *.gz if file exists and client supports precompressed files
+    precompressed zstd br gzip
   }
 }
 
 pgadmin.marinesensitivity.org {
-	reverse_proxy pgadmin:8088
+  reverse_proxy pgadmin:8088
 }
 
 rest.marinesensitivity.org {
@@ -23,11 +19,15 @@ rest.marinesensitivity.org {
 }
 
 rstudio.marinesensitivity.org {
-	reverse_proxy rstudio:8787
+  reverse_proxy rstudio:8787
+}
+
+shiny.marinesensitivity.org {
+  reverse_proxy rstudio:3838
 }
 
 swagger.marinesensitivity.org {
-	reverse_proxy swagger:8080
+  reverse_proxy swagger:8080
 }
 
 tile.marinesensitivity.org {
@@ -40,8 +40,4 @@ tilecache.marinesensitivity.org {
 
 titiler.marinesensitivity.org {
   reverse_proxy titiler:8000
-}
-
-shiny.marinesensitivity.org {
-	reverse_proxy rstudio:3838
 }
