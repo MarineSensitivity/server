@@ -25,11 +25,21 @@ services:
     ports:
       - 8787:8787  # rstudio
       - 3838:3838  # shiny
-      - 8888:8888  # api
     restart: unless-stopped
     volumes:
       - /share:/share
       - /share/shiny_apps:/srv/shiny-server
+
+  plumber:
+    container_name: plumber
+    build: ./plumber
+    ports:
+      - 8888:8888  # api
+    restart: unless-stopped
+    volumes:
+      - /share:/share
+    depends_on:
+      - postgis
 
   postgis:
     container_name: postgis
