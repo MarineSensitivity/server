@@ -81,6 +81,15 @@ sudo docker restart
 
 # update software
 sudo docker compose up -d
+
+# check disk space and remove big unused files interactively
+sudo ncdu
+
+# remove unused docker images, containers, and networks
+docker system prune
+
+# build new plumber api container
+docker compose up --build plumber
 ```
 
 ## Reference
