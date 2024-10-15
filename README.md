@@ -18,6 +18,9 @@ echo 'PASSWORD=*******' > .env
 
 # docker launch as daemon
 docker compose up -d
+
+# docker launch as daemon, rebuilding any changed containers
+docker compose up -d --build
 ```
 
 

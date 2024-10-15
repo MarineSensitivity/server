@@ -24,6 +24,10 @@ RUN installGithub.r \
   MarineSensitivity/msens qfes/rdeck \
   && rm -rf /tmp/downloaded_packages   # clean R package cache
 
+# for each directory in apps, chgrp to shiny and chmod g+rx
+RUN chgrp -R shiny /share/github/MarineSensitivity/apps \
+  && chmod -R g+rx /share/github/MarineSensitivity/apps
+
 EXPOSE 3838
 
 CMD ["/init"]
