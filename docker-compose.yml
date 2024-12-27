@@ -64,7 +64,7 @@ services:
 
   pgadmin:
     container_name: pgadmin
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4:8.14
     restart: always
     environment:
       PGADMIN_DEFAULT_EMAIL: ben@ecoquants.com
