@@ -1,8 +1,17 @@
+(cors) {
+	@origin header Origin *
+	header @origin {
+		Access-Control-Allow-Origin "*"
+		Access-Control-Request-Method GET
+	}
+}
+
 api.marinesensitivity.org {
   reverse_proxy plumber:8888
 }
 
 file.marinesensitivity.org {
+  import cors
   root * /share/public
   file_server browse {
     # serve *.zst, *.br or *.gz if file exists and client supports precompressed files
