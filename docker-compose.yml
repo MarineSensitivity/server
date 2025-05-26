@@ -97,10 +97,10 @@ services:
       - POSTGRES_PASSWORD=${PASSWORD}
       - POSTGRES_EXTRA_OPTS=-Z6 --blobs
       - SCHEDULE=@daily
-      - BACKUP_KEEP_DAYS=7
-      - BACKUP_KEEP_WEEKS=4
-      - BACKUP_KEEP_MONTHS=6
       - HEALTHCHECK_PORT=8088
+      - BACKUP_KEEP_DAYS=2
+      - BACKUP_KEEP_WEEKS=2
+      - BACKUP_KEEP_MONTHS=4
 
   tile:
     container_name: tile
