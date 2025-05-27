@@ -50,3 +50,7 @@ tilecache.marinesensitivity.org {
 titiler.marinesensitivity.org {
   reverse_proxy titiler:8000
 }
+
+titilecache.marinesensitivity.org {
+  reverse_proxy titiler:6082
+}

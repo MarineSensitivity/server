@@ -163,3 +163,20 @@ services:
     ports:
       - "8000:8000"
 
+  titilecache:
+    container_name: titilecache
+    image: varnish:latest # 7.4.2  # last updated: 2023-12-26
+    volumes:
+      - /share:/share
+      # - "./varnish/default.vcl:/etc/varnish/default.vcl"
+    ports:
+      - 6082:6082 # which ports?
+    environment:
+      # VARNISH_SIZE: '2G'
+      VARNISH_BACKEND_HOST: titiler # .marinesensitivity.org
+      VARNISH_BACKEND_PORT: 8000
+      VARNISH_HTTP_PORT: 6082  # VARNISH_PROXY_PORT: '6081'
+    #command: "-p default_keep=43200" # 60*60*12 = 43200 sec = 12 hrs
+    restart: always
+    depends_on:
+      - "titiler"
