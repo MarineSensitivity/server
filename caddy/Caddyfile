@@ -52,5 +52,5 @@ titiler.marinesensitivity.org {
 }
 
 titilecache.marinesensitivity.org {
-  reverse_proxy titiler:6082
+  reverse_proxy titilecache:6082
 }
