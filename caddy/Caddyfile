@@ -23,9 +23,9 @@ pgadmin.marinesensitivity.org {
   reverse_proxy pgadmin:8088
 }
 
-rest.marinesensitivity.org {
-  reverse_proxy rest:3000
-}
+# rest.marinesensitivity.org {
+#   reverse_proxy rest:3000
+# }
 
 rstudio.marinesensitivity.org {
   reverse_proxy rstudio:8787
@@ -35,9 +35,9 @@ shiny.marinesensitivity.org {
   reverse_proxy rstudio:3838
 }
 
-swagger.marinesensitivity.org {
-  reverse_proxy swagger:8080
-}
+# swagger.marinesensitivity.org {
+#   reverse_proxy swagger:8080
+# }
 
 tile.marinesensitivity.org {
   reverse_proxy tile:7800
