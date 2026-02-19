@@ -34,6 +34,12 @@ rstudio.marinesensitivity.org {
 shiny.marinesensitivity.org {
   reverse_proxy rstudio:3838
 }
+
+app.marinesensitivity.org {
+  reverse_proxy rstudio:3838
+}
+
+
 shiny.oceanmetrics.io {
   reverse_proxy rstudio:3838
 }
