@@ -1,0 +1,32 @@
+# production docker-compose.yml for BOEM internal server
+# trimmed from the development server to essential services only:
+#   caddy (reverse proxy + file server), shiny (R apps)
+# data accessed directly from /share volume:
+#   duckdb, pmtiles, gpkg, csv, tif
+
+services:
+  caddy:
+    container_name: caddy
+    image: caddy:latest
+    ports:
+      - 80:80
+      - 443:443
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - /share:/share
+      - /share/caddy/data:/data
+      - /share/caddy/config:/config
+
+  shiny:
+    container_name: shiny
+    image: ghcr.io/marinesensitivity/shiny:latest
+    ports:
+      - 3838:3838
+    restart: unless-stopped
+    volumes:
+      - /share:/share
+      - /share/shiny_apps:/srv/shiny-server
+    environment:
+      # run as non-root shiny user
+      SHINY_LOG_STDERR: 1

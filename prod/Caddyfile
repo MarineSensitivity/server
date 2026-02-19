@@ -1,0 +1,34 @@
+# production Caddyfile for BOEM internal server
+# serves: shiny apps, static docs/website, pmtiles, public files
+
+(cors) {
+	@origin header Origin *
+	header @origin {
+		Access-Control-Allow-Origin  "*"
+		Access-Control-Request-Method GET
+	}
+}
+
+# shiny apps (reverse proxy to shiny container)
+app.marinesensitivity.org {
+  reverse_proxy shiny:3838
+}
+
+# public file server (data downloads, pmtiles)
+file.marinesensitivity.org {
+  import cors
+  root * /share/public
+  file_server browse {
+    precompressed zstd br gzip
+  }
+}
+
+# project documentation (quarto book, static html)
+marinesensitivity.org {
+  root * /share/public/www
+  file_server
+  handle /docs/* {
+    root * /share/public/www
+    file_server
+  }
+}
