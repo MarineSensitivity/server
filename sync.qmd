@@ -39,7 +39,7 @@ The MST infrastructure spans three tiers: developer laptops, an external cloud s
 
 ```{mermaid}
 %%| label: fig-architecture
-%%| fig-cap: "Overall server architecture showing developer laptop, external AWS server, and internal BOEM server with Docker services and data flows."
+%%| fig-cap: "Overall server architecture showing developer laptop, GitHub (repos + container registry), external AWS server, and internal BOEM server with Docker services and data flows."
 %%| fig-width: 10
 
 %%{init: {
@@ -61,8 +61,33 @@ flowchart TB
   subgraph LAPTOP["fa:fa-laptop Developer Laptop"]
     direction TB
     L_CODE["fa:fa-code R / Quarto / Git"]
-    L_PUSH["fa:fa-upload git push"]
-    L_CODE --> L_PUSH
+    L_RSYNC["fa:fa-upload rsync via SSH"]
+    L_GIT["fa:fa-code-branch git push"]
+    L_CODE --> L_RSYNC
+    L_CODE --> L_GIT
+  end
+
+  subgraph GITHUB["fa:fa-github GitHub"]
+    direction TB
+
+    subgraph GH_REPOS["fa:fa-code-branch Repositories"]
+      direction LR
+      GH_APPS["fa:fa-window-maximize MarineSensitivity/apps"]
+      GH_SERVER["fa:fa-server MarineSensitivity/server"]
+      GH_DOCS["fa:fa-book MarineSensitivity/docs"]
+      GH_SITE["fa:fa-globe MarineSensitivity.github.io"]
+    end
+
+    subgraph GH_CICD["fa:fa-gears GitHub Actions + GHCR"]
+      direction LR
+      GH_ACTIONS["fa:fa-play CI/CD<br>builds"]
+      GH_GHCR["fa:fa-box GHCR<br>(container registry)"]
+      GH_PAGES["fa:fa-file-code GitHub Pages<br>(docs, site)"]
+      GH_ACTIONS --> GH_GHCR
+      GH_ACTIONS --> GH_PAGES
+    end
+
+    GH_REPOS --> GH_CICD
   end
 
   subgraph EXTERNAL["fa:fa-cloud External Server (AWS)"]
@@ -70,24 +95,24 @@ flowchart TB
 
     subgraph EXT_DOCKER["fa:fa-docker Docker Services"]
       direction LR
-      E_CADDY["fa:fa-server Caddy\n(reverse proxy)"]
-      E_SHINY["fa:fa-chart-bar Shiny\n(apps)"]
-      E_RSTUDIO["fa:fa-laptop-code RStudio\n(dev/debug)"]
-      E_PLUMBER["fa:fa-plug Plumber\n(API)"]
+      E_CADDY["fa:fa-server Caddy<br>(reverse proxy)"]
+      E_SHINY["fa:fa-chart-bar Shiny<br>(apps)"]
+      E_RSTUDIO["fa:fa-laptop-code RStudio<br>(dev/debug)"]
+      E_PLUMBER["fa:fa-plug Plumber<br>(API)"]
       E_POSTGIS["fa:fa-database PostGIS"]
       E_TILE["fa:fa-map pg_tileserv"]
     end
 
     subgraph EXT_DATA["fa:fa-folder-open /share Data"]
       direction LR
-      E_DUCKDB["fa:fa-database DuckDB\n(.duckdb)"]
-      E_PMTILES["fa:fa-map PMTiles\n(.pmtiles)"]
-      E_FILES["fa:fa-file GeoPackage\nCSV / TIF"]
-      E_WWW["fa:fa-globe Static Web\n(docs, site)"]
+      E_DUCKDB["fa:fa-database DuckDB<br>(.duckdb)"]
+      E_PMTILES["fa:fa-map PMTiles<br>(.pmtiles)"]
+      E_FILES["fa:fa-file GeoPackage<br>CSV / TIF"]
+      E_WWW["fa:fa-globe Static Web<br>(docs, site)"]
     end
 
-    subgraph EXT_GH["fa:fa-code-branch GitHub Actions"]
-      E_GHCR["fa:fa-box GHCR\n(container registry)"]
+    subgraph EXT_APPS["fa:fa-folder-open /share/github Apps"]
+      E_APP_CODE["fa:fa-code App source<br>(git pull)"]
     end
   end
 
@@ -96,53 +121,76 @@ flowchart TB
 
     subgraph INT_DOCKER["fa:fa-docker Docker Services (prod)"]
       direction LR
-      I_CADDY["fa:fa-server Caddy\n(reverse proxy +\nfile server)"]
-      I_SHINY["fa:fa-chart-bar Shiny\n(apps)"]
-      I_WATCH["fa:fa-eye Watchtower\n(image updater)"]
+      I_CADDY["fa:fa-server Caddy<br>(reverse proxy +<br>file server)"]
+      I_SHINY["fa:fa-chart-bar Shiny<br>(apps)"]
+      I_WATCH["fa:fa-eye Watchtower<br>(image updater)"]
     end
 
     subgraph INT_DATA["fa:fa-folder-open /share Data"]
       direction LR
-      I_DUCKDB["fa:fa-database DuckDB\n(.duckdb)"]
-      I_PMTILES["fa:fa-map PMTiles\n(.pmtiles)"]
-      I_FILES["fa:fa-file GeoPackage\nCSV / TIF"]
-      I_WWW["fa:fa-globe Static Web\n(docs, site)"]
+      I_DUCKDB["fa:fa-database DuckDB<br>(.duckdb)"]
+      I_PMTILES["fa:fa-map PMTiles<br>(.pmtiles)"]
+      I_FILES["fa:fa-file GeoPackage<br>CSV / TIF"]
+      I_WWW["fa:fa-globe Static Web<br>(docs, site)"]
     end
 
     subgraph INT_SYNC["fa:fa-sync Sync Services"]
       direction LR
       I_CRON["fa:fa-clock Cron"]
-      I_RCLONE["fa:fa-exchange-alt rclone\n(sftp)"]
+      I_RCLONE["fa:fa-exchange-alt rclone<br>(sftp)"]
       I_PING["fa:fa-heartbeat Heartbeat"]
+    end
+
+    subgraph INT_APPS["fa:fa-folder-open /share/github Apps"]
+      I_APP_CODE["fa:fa-code App source<br>(git pull)"]
     end
   end
 
-  %% developer -> external
-  L_PUSH -->|"git push +\nCI/CD build"| E_GHCR
-  L_PUSH -->|"git push"| EXT_DOCKER
+  %% laptop -> external server (data via rsync)
+  L_RSYNC ==>|"deploy data<br>(rsync ssh)"| EXT_DATA
 
-  %% internal pulls from external
+  %% laptop -> github (code via git push)
+  L_GIT ==>|"push code"| GH_REPOS
+
+  %% github -> external server (app code via git pull)
+  GH_REPOS -->|"git pull<br>(apps, server)"| E_APP_CODE
+
+  %% github -> internal server (app code via git pull)
+  GH_REPOS -->|"git pull<br>(apps, server)"| I_APP_CODE
+
+  %% internal pulls docker images from GHCR
+  I_WATCH ==>|"pull images<br>(HTTPS)"| GH_GHCR
+
+  %% internal pulls data from external
   I_CRON -->|"schedule"| I_RCLONE
-  I_RCLONE -->|"pull data\n(sftp)"| EXT_DATA
-  I_RCLONE -.->|"push logs\n(sftp)"| EXTERNAL
-  I_WATCH -->|"pull images\n(https)"| E_GHCR
-  I_PING -->|"heartbeat\n(sftp)"| EXTERNAL
+  I_RCLONE ==>|"pull data<br>(sftp)"| EXT_DATA
+  I_RCLONE -.->|"push logs<br>(sftp)"| EXTERNAL
+  I_PING -.->|"heartbeat<br>(sftp)"| EXTERNAL
 
   %% internal data flow
   I_RCLONE --> INT_DATA
   INT_DATA --- I_CADDY
   INT_DATA --- I_SHINY
+  I_APP_CODE --- I_SHINY
+
+  %% external data flow
+  EXT_DATA --- E_SHINY
+  E_APP_CODE --- E_SHINY
 
   %% styling
   style LAPTOP fill:#E3F2FD,stroke:#1565C0,stroke-width:2px
+  style GITHUB fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px
+  style GH_REPOS fill:#EDE7F6,stroke:#9575CD,stroke-width:1px
+  style GH_CICD fill:#EDE7F6,stroke:#9575CD,stroke-width:1px
   style EXTERNAL fill:#FFF3E0,stroke:#E65100,stroke-width:2px
   style INTERNAL fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px
   style EXT_DOCKER fill:#FFECB3,stroke:#F9A825,stroke-width:1px
   style EXT_DATA fill:#FFF8E1,stroke:#F9A825,stroke-width:1px
-  style EXT_GH fill:#FFF8E1,stroke:#F9A825,stroke-width:1px
+  style EXT_APPS fill:#FFF8E1,stroke:#F9A825,stroke-width:1px
   style INT_DOCKER fill:#C8E6C9,stroke:#388E3C,stroke-width:1px
   style INT_DATA fill:#E8F5E9,stroke:#388E3C,stroke-width:1px
   style INT_SYNC fill:#DCEDC8,stroke:#558B2F,stroke-width:1px
+  style INT_APPS fill:#E8F5E9,stroke:#388E3C,stroke-width:1px
 ```
 
 ### Current state (external only)
@@ -162,10 +210,15 @@ The existing external server on AWS (`100.25.173.0`) runs the full development s
 | **titiler**   | cloud-optimized GeoTIFF tile server   | 8000  |
 | **titilecache** | Varnish cache for titiler           | 6082  |
 
+The current deployment workflow uses two channels:
+
+- **Data files** — the developer runs [`deploy_to_server.sh`](https://github.com/MarineSensitivity/workflows/blob/main/libs/deploy_to_server.sh), which uses `rsync` over SSH to push derived data (DuckDB, GeoPackage, CSV, TIF) from the developer laptop to the external server's `/share/data` directory, then restarts the Shiny container.
+- **App source code** — the developer pushes to [GitHub](https://github.com/MarineSensitivity/apps), then SSHs into the external server to run `git pull` in `/share/github/MarineSensitivity/apps`. The Shiny Server watches the app directories and picks up changes automatically.
+
 Static web content is currently served via GitHub Pages:
 
-- [marinesensitivity.org](https://marinesensitivity.org) — project homepage
-- [marinesensitivity.org/docs](https://marinesensitivity.org/docs) — project documentation
+- [marinesensitivity.org](https://marinesensitivity.org) — project homepage ([MarineSensitivity.github.io](https://github.com/MarineSensitivity/MarineSensitivity.github.io))
+- [marinesensitivity.org/docs](https://marinesensitivity.org/docs) — project documentation ([MarineSensitivity/docs](https://github.com/MarineSensitivity/docs))
 
 ### Target state (internal production)
 
@@ -193,7 +246,7 @@ All synchronization is **initiated by the internal server** — it pulls updates
 
 ```{mermaid}
 %%| label: fig-sync
-%%| fig-cap: "Synchronization flow between internal BOEM server and external AWS server. All connections are initiated by the internal server (outbound only)."
+%%| fig-cap: "Synchronization flow between internal BOEM server, external AWS server, and GitHub. All connections are initiated by the internal server (outbound only)."
 %%| fig-width: 10
 
 %%{init: {
@@ -212,80 +265,94 @@ flowchart LR
   subgraph INTERNAL["fa:fa-shield-halved BOEM Internal Server"]
     direction TB
     CRON["fa:fa-clock Cron Scheduler"]
-    PULL["fa:fa-download sync-pull.sh\n(rclone sftp)"]
-    PUSH["fa:fa-upload sync-push.sh\n(rclone sftp)"]
-    PING["fa:fa-heartbeat ping.sh\n(heartbeat)"]
-    TOWER["fa:fa-eye Watchtower\n(Docker image pull)"]
+    PULL["fa:fa-download sync-pull.sh<br>(rclone sftp)"]
+    PUSH["fa:fa-upload sync-push.sh<br>(rclone sftp)"]
+    PING["fa:fa-heartbeat ping.sh<br>(heartbeat)"]
+    GITPULL["fa:fa-code-branch git pull<br>(app source)"]
+    TOWER["fa:fa-eye Watchtower<br>(Docker image pull)"]
 
     CRON -->|"hourly"| PULL
     CRON -->|"hourly"| PUSH
     CRON -->|"every 5 min"| PING
+    CRON -->|"hourly"| GITPULL
     TOWER -->|"every 6 hrs"| TOWER
+  end
+
+  subgraph GITHUB["fa:fa-github GitHub"]
+    direction TB
+
+    subgraph GH_REPOS["fa:fa-code-branch Repositories"]
+      GH_APPS["fa:fa-window-maximize apps"]
+      GH_SERVER["fa:fa-server server"]
+    end
+
+    subgraph GH_REG["fa:fa-box Container Registry"]
+      GHCR["fa:fa-docker GHCR<br>ghcr.io/marinesensitivity"]
+    end
   end
 
   subgraph EXTERNAL["fa:fa-cloud External AWS Server"]
     direction TB
 
-    subgraph PULL_TARGETS["fa:fa-folder Data + Content"]
-      DATA["fa:fa-database Data Files\nduckdb / gpkg / csv / tif"]
-      PMT["fa:fa-map PMTiles"]
-      WWW["fa:fa-globe Website + Docs\n(static HTML)"]
-      APPS["fa:fa-window-maximize Shiny Apps\n(R source)"]
+    subgraph PULL_TARGETS["fa:fa-folder Data Files"]
+      DATA["fa:fa-database DuckDB<br>(.duckdb)"]
+      PMT["fa:fa-map PMTiles<br>(.pmtiles)"]
+      FILES["fa:fa-file GeoPackage<br>CSV / TIF"]
+      WWW["fa:fa-globe Website + Docs<br>(static HTML)"]
     end
 
     subgraph PUSH_TARGETS["fa:fa-file-alt Logs"]
-      LOGS["fa:fa-scroll Sync Logs\nShiny Logs\nDocker Logs"]
+      LOGS["fa:fa-scroll Sync Logs<br>Shiny Logs<br>Docker Logs"]
       HB["fa:fa-heartbeat heartbeat.json"]
     end
 
-    subgraph IMAGES["fa:fa-docker Container Registry"]
-      GHCR["fa:fa-box GHCR\nghcr.io/marinesensitivity"]
-    end
-
-    MON["fa:fa-bell monitor-heartbeat.sh\n(alerts if stale)"]
+    MON["fa:fa-bell monitor-heartbeat.sh<br>(alerts if stale)"]
     HB --> MON
   end
 
-  %% pull connections (internal initiates)
-  PULL ==>|"pull data"| DATA
-  PULL ==>|"pull pmtiles"| PMT
-  PULL ==>|"pull website"| WWW
-  PULL ==>|"pull apps"| APPS
+  %% pull data from external server (internal initiates, sftp)
+  PULL ==>|"pull data<br>(sftp)"| PULL_TARGETS
 
-  %% push connections (internal initiates)
-  PUSH -.->|"push logs"| LOGS
-  PING -.->|"push heartbeat"| HB
+  %% pull app code from github (internal initiates, https)
+  GITPULL ==>|"pull code<br>(HTTPS)"| GH_REPOS
 
-  %% docker image pull
-  TOWER ==>|"pull images\n(HTTPS)"| GHCR
+  %% pull docker images from GHCR (internal initiates, https)
+  TOWER ==>|"pull images<br>(HTTPS)"| GHCR
+
+  %% push connections (internal initiates, sftp)
+  PUSH -.->|"push logs<br>(sftp)"| LOGS
+  PING -.->|"push heartbeat<br>(sftp)"| HB
 
   %% legend
   subgraph LEGEND["Legend"]
     direction LR
-    LP["fa:fa-arrow-right Solid = pull (data in)"]
+    LP["fa:fa-arrow-right Solid = pull (data/code in)"]
     LD["fa:fa-arrow-right Dashed = push (logs out)"]
   end
 
   %% styling
   style INTERNAL fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px
+  style GITHUB fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px
+  style GH_REPOS fill:#EDE7F6,stroke:#9575CD,stroke-width:1px
+  style GH_REG fill:#EDE7F6,stroke:#9575CD,stroke-width:1px
   style EXTERNAL fill:#FFF3E0,stroke:#E65100,stroke-width:2px
   style PULL_TARGETS fill:#FFF8E1,stroke:#F9A825,stroke-width:1px
   style PUSH_TARGETS fill:#FFECB3,stroke:#F9A825,stroke-width:1px
-  style IMAGES fill:#FFF8E1,stroke:#F9A825,stroke-width:1px
   style LEGEND fill:#F5F5F5,stroke:#9E9E9E,stroke-width:1px
 ```
 
 ### Sync summary
 
-| What                | Direction        | Tool        | Schedule    | Protocol |
-|---------------------|------------------|-------------|-------------|----------|
-| Data files (duckdb, gpkg, csv, tif) | internal pulls from external | rclone (sftp) | hourly | SSH |
-| PMTiles             | internal pulls from external | rclone (sftp) | hourly      | SSH      |
-| Static website/docs | internal pulls from external | rclone (sftp) | hourly      | SSH      |
-| Shiny app source    | internal pulls from external | rclone (sftp) | hourly      | SSH      |
-| Docker images       | internal pulls from registry | Watchtower    | every 6 hrs | HTTPS    |
-| Sync/Shiny/Docker logs | internal pushes to external | rclone (sftp) | hourly   | SSH      |
-| Heartbeat           | internal pushes to external  | rclone (sftp) | every 5 min | SSH     |
+| What                | Direction        | Source | Tool        | Schedule    | Protocol |
+|---------------------|------------------|--------|-------------|-------------|----------|
+| Data files (duckdb, gpkg, csv, tif) | internal pulls | external server | rclone (sftp) | hourly | SSH |
+| PMTiles             | internal pulls   | external server | rclone (sftp) | hourly      | SSH      |
+| Static website/docs | internal pulls   | external server | rclone (sftp) | hourly      | SSH      |
+| Shiny app source    | internal pulls   | GitHub repos    | git pull      | hourly      | HTTPS    |
+| Server config       | internal pulls   | GitHub repos    | git pull      | hourly      | HTTPS    |
+| Docker images       | internal pulls   | GitHub GHCR     | Watchtower    | every 6 hrs | HTTPS    |
+| Sync/Shiny/Docker logs | internal pushes | external server | rclone (sftp) | hourly   | SSH      |
+| Heartbeat           | internal pushes  | external server | rclone (sftp) | every 5 min | SSH     |
 
 ## Implementation {#sec-implementation}
 
@@ -448,21 +515,21 @@ flowchart TB
   CLIENT["fa:fa-users Browser Client"]
 
   subgraph DOCKER["fa:fa-docker Docker (Production)"]
-    CADDY["fa:fa-server Caddy\nport 80/443\n- reverse proxy\n- static file server\n- TLS termination"]
-    SHINY["fa:fa-chart-bar Shiny\nport 3838\n- mapgl app\n- mapsp app"]
-    WATCH["fa:fa-eye Watchtower\n- auto image updates"]
+    CADDY["fa:fa-server Caddy<br>port 80/443<br>- reverse proxy<br>- static file server<br>- TLS termination"]
+    SHINY["fa:fa-chart-bar Shiny<br>port 3838<br>- mapgl app<br>- mapsp app"]
+    WATCH["fa:fa-eye Watchtower<br>- auto image updates"]
   end
 
   subgraph DATA["/share Volume"]
     direction LR
-    DUCKDB["fa:fa-database DuckDB\nsdm.duckdb"]
-    PMTILES["fa:fa-map PMTiles\n*.pmtiles"]
-    STATIC["fa:fa-globe Static HTML\ndocs / website"]
-    FILES["fa:fa-file Ancillary\ngpkg / csv / tif"]
+    DUCKDB["fa:fa-database DuckDB<br>sdm.duckdb"]
+    PMTILES["fa:fa-map PMTiles<br>*.pmtiles"]
+    STATIC["fa:fa-globe Static HTML<br>docs / website"]
+    FILES["fa:fa-file Ancillary<br>gpkg / csv / tif"]
   end
 
   CLIENT -->|"HTTPS"| CADDY
-  CADDY -->|"/mapgl\n/mapsp"| SHINY
+  CADDY -->|"/mapgl<br>/mapsp"| SHINY
   CADDY -->|"static files"| STATIC
   CADDY -->|"pmtiles"| PMTILES
   SHINY -->|"read"| DUCKDB
