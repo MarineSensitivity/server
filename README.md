@@ -2,6 +2,17 @@
 
 The server software is for setting up web services outside those of Github (e.g. serving website, docs and R package) using Docker (see the [docker-compose.yml](https://github.com/MarineSensitivity/server/blob/main/docker-compose.yml); with reverse proxying from subdomains to ports by [Caddy](https://caddyserver.com)):
 
+## Notebooks
+
+These web pages (\*.html) are typically rendered from Quarto markdown (\*.qmd) in [github.com/MarineSensitivity/server](https://github.com/MarineSensitivity/server):
+
+<!-- Jekyll rendering -->
+{% for file in site.static_files %}
+  {% if file.extname == '.html' %}
+* [{{ file.basename }}]({{ site.baseurl }}{{ file.path }})
+  {% endif %}
+{% endfor %}
+
 ## Quick Start
 
 ```bash
