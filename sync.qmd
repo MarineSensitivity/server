@@ -31,7 +31,7 @@ The Marine Sensitivity Toolkit (MST) is a BOEM-funded project that delivers inte
 
 The lead contractor will be out of the United States for an extended period to have his second child in his wife's home country of Italy. During this time, active development will continue on a server **external** to the BOEM network (the existing AWS-hosted development server), while BOEM's goal is to migrate production web services to a server **internal** to the BOEM network.
 
-To bridge this gap, the **internal production server must initiate all synchronization** — pulling software updates (Docker images), data files, and static web content from the external development server, and pushing log files back for remote debugging. This document describes the architecture, synchronization strategy, implementation scripts, monitoring approach, and government compliance considerations for this arrangement.
+To bridge this gap, the **internal production server must initiate all synchronization** — pulling software updates (container images), data files, and static web content from the external development server, and pushing log files back for remote debugging. This document describes the architecture, synchronization strategy, implementation scripts, monitoring approach, and government compliance considerations for this arrangement.
 
 ## Architecture Overview {#sec-architecture}
 
@@ -39,7 +39,7 @@ The MST infrastructure spans three tiers: developer laptops, an external cloud s
 
 ```{mermaid}
 %%| label: fig-architecture
-%%| fig-cap: "Overall server architecture showing developer laptop, GitHub (repos + container registry), external AWS server, and internal BOEM server with Docker services and data flows."
+%%| fig-cap: "Overall server architecture showing developer laptop, GitHub (repos + container registry), external AWS server (Docker), and internal BOEM server (Podman) with container services and data flows."
 %%| fig-width: 10
 
 %%{init: {
@@ -80,7 +80,7 @@ flowchart TB
 
     subgraph GH_CICD["fa:fa-gears GitHub Actions + GHCR"]
       direction LR
-      GH_ACTIONS["fa:fa-play CI/CD<br>builds"]
+      GH_ACTIONS["fa:fa-play CI/CD<br>Shiny image build"]
       GH_GHCR["fa:fa-box GHCR<br>(container registry)"]
       GH_PAGES["fa:fa-file-code GitHub Pages<br>(docs, site)"]
       GH_ACTIONS --> GH_GHCR
@@ -119,11 +119,11 @@ flowchart TB
   subgraph INTERNAL["fa:fa-shield-halved Internal Server (BOEM)"]
     direction TB
 
-    subgraph INT_DOCKER["fa:fa-docker Docker Services (prod)"]
+    subgraph INT_DOCKER["fa:fa-box Podman Services (prod)"]
       direction LR
       I_CADDY["fa:fa-server Caddy<br>(reverse proxy +<br>file server)"]
       I_SHINY["fa:fa-chart-bar Shiny<br>(apps)"]
-      I_WATCH["fa:fa-eye Watchtower<br>(image updater)"]
+      I_WATCH["fa:fa-sync podman<br>auto-update"]
     end
 
     subgraph INT_DATA["fa:fa-folder-open /share Data"]
@@ -226,9 +226,9 @@ The internal BOEM server runs a minimal production stack defined in [`prod/docke
 
 | Service        | Purpose                             | Port  |
 |----------------|-------------------------------------|-------|
-| **caddy**      | reverse proxy + file server + docs  | 80/443|
+| **caddy**      | reverse proxy + file server + docs  | 80    |
 | **shiny**      | R Shiny applications                | 3838  |
-| **watchtower** | automatic Docker image updates      | —     |
+| **auto-update** | automatic container image updates (podman) | —     |
 
 Services **not needed** on production:
 
@@ -269,13 +269,13 @@ flowchart LR
     PUSH["fa:fa-upload sync-push.sh<br>(rclone sftp)"]
     PING["fa:fa-heartbeat ping.sh<br>(heartbeat)"]
     GITPULL["fa:fa-code-branch git pull<br>(app source)"]
-    TOWER["fa:fa-eye Watchtower<br>(Docker image pull)"]
+    TOWER["fa:fa-sync podman<br>auto-update"]
 
     CRON -->|"hourly"| PULL
     CRON -->|"hourly"| PUSH
     CRON -->|"every 5 min"| PING
     CRON -->|"hourly"| GITPULL
-    TOWER -->|"every 6 hrs"| TOWER
+    TOWER -->|"daily"| TOWER
   end
 
   subgraph GITHUB["fa:fa-github GitHub"]
@@ -302,7 +302,7 @@ flowchart LR
     end
 
     subgraph PUSH_TARGETS["fa:fa-file-alt Logs"]
-      LOGS["fa:fa-scroll Sync Logs<br>Shiny Logs<br>Docker Logs"]
+      LOGS["fa:fa-scroll Sync Logs<br>Shiny Logs<br>Container Logs"]
       HB["fa:fa-heartbeat heartbeat.json"]
     end
 
@@ -350,8 +350,8 @@ flowchart LR
 | Static website/docs | internal pulls   | external server | rclone (sftp) | hourly      | SSH      |
 | Shiny app source    | internal pulls   | GitHub repos    | git pull      | hourly      | HTTPS    |
 | Server config       | internal pulls   | GitHub repos    | git pull      | hourly      | HTTPS    |
-| Docker images       | internal pulls   | GitHub GHCR     | Watchtower    | every 6 hrs | HTTPS    |
-| Sync/Shiny/Docker logs | internal pushes | external server | rclone (sftp) | hourly   | SSH      |
+| Container images    | internal pulls   | GitHub GHCR     | podman auto-update | daily  | HTTPS    |
+| Sync/Shiny/container logs | internal pushes | external server | rclone (sftp) | hourly   | SSH      |
 | Heartbeat           | internal pushes  | external server | rclone (sftp) | every 5 min | SSH     |
 
 ## Implementation {#sec-implementation}
@@ -364,17 +364,16 @@ On the **internal BOEM server** (Red Hat Linux):
 # install rclone
 sudo yum install -y rclone
 
-# install docker and docker-compose (if not already)
-sudo yum install -y docker docker-compose-plugin
-sudo systemctl enable docker
-sudo systemctl start docker
+# install podman and podman-compose (RHEL 8)
+sudo yum install -y podman podman-compose
+sudo systemctl enable --now podman.socket
 
 # create log directory
 sudo mkdir -p /var/log/msens
 sudo chown $USER:$USER /var/log/msens
 
 # create data directories
-sudo mkdir -p /share/data /share/public/www /share/shiny_apps /share/logs
+sudo mkdir -p /share/data /share/public/www /share/github/MarineSensitivity /share/logs
 ```
 
 ### SSH key setup
@@ -419,7 +418,7 @@ rclone lsd ext_dev:/share/data/derived/
 The sync scripts live in [`prod/`](prod/) and handle pulling data and pushing logs:
 
 - **[`prod/sync-pull.sh`](prod/sync-pull.sh)** — pulls data files, PMTiles, static website, and Shiny apps from the external server
-- **[`prod/sync-push.sh`](prod/sync-push.sh)** — pushes sync logs, Shiny logs, and Docker logs to the external server for remote debugging
+- **[`prod/sync-push.sh`](prod/sync-push.sh)** — pushes sync logs, Shiny logs, and container logs to the external server for remote debugging
 - **[`prod/ping.sh`](prod/ping.sh)** — sends a heartbeat JSON with system health info every 5 minutes
 
 Make scripts executable:
@@ -428,23 +427,24 @@ Make scripts executable:
 chmod +x prod/sync-pull.sh prod/sync-push.sh prod/ping.sh
 ```
 
-### Watchtower (Docker image sync) {#sec-watchtower}
+### Auto-update (podman auto-update) {#sec-auto-update}
 
-[Watchtower](https://containrrr.dev/watchtower/) automatically monitors running Docker containers and pulls updated images from the container registry. The configuration is in [`prod/watchtower.yml`](prod/watchtower.yml).
+Podman's built-in [`auto-update`](https://docs.podman.io/en/latest/markdown/podman-auto-update.1.html) mechanism checks the container registry for newer images and restarts containers that have the `io.containers.autoupdate=registry` label. This replaces Watchtower (which requires Docker's socket).
 
-Start Watchtower alongside the production stack:
+The shiny service in [`prod/docker-compose.yml`](prod/docker-compose.yml) already has the label set. Enable the systemd timer to run auto-update daily:
 
 ```bash
-cd /share/github/server/prod
+# enable the podman auto-update timer (checks daily)
+sudo systemctl enable --now podman-auto-update.timer
 
-# start production services
-docker compose up -d
+# verify the timer is active
+systemctl list-timers podman-auto-update.timer
 
-# start watchtower
-docker compose -f watchtower.yml up -d
+# manual one-time check
+podman auto-update
 ```
 
-When the developer pushes a new Shiny image to GitHub Container Registry (GHCR), Watchtower will detect the update within 6 hours and automatically pull the new image, stop the old container, and start a new one.
+When the developer pushes a new Shiny image to GitHub Container Registry (GHCR), `podman auto-update` will detect the update on the next timer run, pull the new image, and restart the container.
 
 ### Cron schedule {#sec-cron}
 
@@ -493,11 +493,11 @@ If no heartbeat arrives for 15 minutes, the monitor sends an email alert with th
 
 ## Production Stack {#sec-prod-stack}
 
-The production Docker Compose configuration ([`prod/docker-compose.yml`](prod/docker-compose.yml)) runs only the essential services:
+The production container configuration ([`prod/docker-compose.yml`](prod/docker-compose.yml), run with `podman-compose`) provides only the essential services:
 
 ```{mermaid}
 %%| label: fig-prod-stack
-%%| fig-cap: "Production server Docker services and data flow. Caddy serves static content and proxies Shiny. Data files are mounted as volumes."
+%%| fig-cap: "Production server Podman services and data flow. Caddy serves static content and proxies Shiny. Data files are mounted as volumes."
 %%| fig-width: 8
 
 %%{init: {
@@ -514,11 +514,13 @@ The production Docker Compose configuration ([`prod/docker-compose.yml`](prod/do
 flowchart TB
   CLIENT["fa:fa-users Browser Client"]
 
-  subgraph DOCKER["fa:fa-docker Docker (Production)"]
-    CADDY["fa:fa-server Caddy<br>port 80/443<br>- reverse proxy<br>- static file server<br>- TLS termination"]
+  subgraph DOCKER["fa:fa-box Podman (Production)"]
+    CADDY["fa:fa-server Caddy<br>port 80<br>- path-based routing<br>- static file server"]
     SHINY["fa:fa-chart-bar Shiny<br>port 3838<br>- mapgl app<br>- mapsp app"]
-    WATCH["fa:fa-eye Watchtower<br>- auto image updates"]
+    WATCH["fa:fa-sync podman<br>auto-update"]
   end
+
+  GHCR["fa:fa-box GHCR<br>ghcr.io/marinesensitivity/shiny"]
 
   subgraph DATA["/share Volume"]
     direction LR
@@ -528,44 +530,109 @@ flowchart TB
     FILES["fa:fa-file Ancillary<br>gpkg / csv / tif"]
   end
 
-  CLIENT -->|"HTTPS"| CADDY
-  CADDY -->|"/mapgl<br>/mapsp"| SHINY
-  CADDY -->|"static files"| STATIC
-  CADDY -->|"pmtiles"| PMTILES
+  CLIENT -->|"HTTP"| CADDY
+  CADDY -->|"/app/mapgl<br>/app/mapsp"| SHINY
+  CADDY -->|"/docs/*"| STATIC
+  CADDY -->|"/file/*"| PMTILES
   SHINY -->|"read"| DUCKDB
   SHINY -->|"read"| FILES
-  WATCH -.->|"pull images"| SHINY
+  GHCR -.->|"pull image"| WATCH
+  WATCH -.->|"update"| SHINY
 
   style DOCKER fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px
   style DATA fill:#FFF8E1,stroke:#F9A825,stroke-width:2px
 ```
 
+### Container image build and distribution {#sec-docker-image}
+
+The production Shiny image (`ghcr.io/marinesensitivity/shiny:latest`) is built from [`prod/shiny/Dockerfile`](prod/shiny/Dockerfile) and pushed to GitHub Container Registry (GHCR). A [GitHub Actions workflow](`.github/workflows/docker-shiny.yml`) automatically builds and pushes the image when the Dockerfile changes on `main`. Manual builds can also be triggered via `workflow_dispatch`.
+
+**When to rebuild**: only when R package dependencies change (adding/removing/upgrading packages). App code changes do **not** require an image rebuild — app source is mounted as a volume.
+
+#### First-time GHCR setup
+
+Both `docker` (developer laptop) and `podman` (RHEL production server) produce OCI-compatible images — either can build/push to GHCR.
+
+```bash
+# authenticate to GHCR (docker on laptop, podman on production server)
+cat ~'/My Drive/private/GITHUB_PAT_full-scope_2024-12-03_no-expiration.txt' | docker login ghcr.io -u bbest --password-stdin
+```
+
+After pushing the first image, set the GHCR package visibility to **Public** in the package settings at `https://github.com/orgs/MarineSensitivity/packages/container/shiny/settings`.
+
+#### Manual build and push (from developer laptop)
+
+```bash
+# build locally (docker on laptop)
+docker build -t ghcr.io/marinesensitivity/shiny:latest ./prod/shiny
+
+# push to GHCR
+docker push ghcr.io/marinesensitivity/shiny:latest
+```
+
+#### Pull on internal server
+
+```bash
+# pull the latest image
+podman pull ghcr.io/marinesensitivity/shiny:latest
+
+# restart with the new image
+cd /share/github/MarineSensitivity/server/prod
+podman-compose up -d
+```
+
+`podman auto-update` (@sec-auto-update) automates this — the systemd timer checks GHCR daily and pulls new images automatically.
+
+#### Offline fallback (save / load)
+
+If the internal server cannot reach `ghcr.io`, transfer the image manually:
+
+```bash
+# on a machine with internet access (docker on laptop)
+docker pull ghcr.io/marinesensitivity/shiny:latest
+docker save ghcr.io/marinesensitivity/shiny:latest | gzip > shiny-latest.tar.gz
+
+# transfer shiny-latest.tar.gz to internal server (e.g., via rclone, scp, USB)
+
+# on internal server (podman)
+gunzip -c shiny-latest.tar.gz | podman load
+podman-compose up -d
+```
+
 ### Deployment
 
 ```bash
-# clone server repo on internal server
-mkdir -p /share/github
-cd /share/github
+# clone repos on internal server
+mkdir -p /share/github/MarineSensitivity
+cd /share/github/MarineSensitivity
 git clone https://github.com/MarineSensitivity/server.git
-cd server/prod
+git clone https://github.com/MarineSensitivity/apps.git
+
+# pull the shiny image from GHCR (first time)
+podman pull ghcr.io/marinesensitivity/shiny:latest
 
 # start services
-docker compose up -d
-docker compose -f watchtower.yml up -d
+cd server/prod
+podman-compose up -d
 
 # verify
-docker ps
-curl -s http://localhost:3838 | head -5
+podman ps
+curl -s http://localhost/app/mapgl | head -5
 ```
+
+The Shiny apps are mounted as a volume from the `apps` repo clone at `/share/github/MarineSensitivity/apps` into the Shiny container at `/srv/shiny-server`. This means app code updates only require a `git pull` in the apps repo — no image rebuild needed.
 
 ### Migrating static web content
 
 The project website and documentation currently served by GitHub Pages can be served internally by Caddy as static files:
 
-| Content                        | Current URL                          | Internal path             |
-|-------------------------------|--------------------------------------|---------------------------|
-| Project homepage              | marinesensitivity.org                | /share/public/www/        |
-| Project documentation         | marinesensitivity.org/docs           | /share/public/www/docs/   |
+| Content                        | Current URL                          | Internal URL                                    | Internal path             |
+|-------------------------------|--------------------------------------|-------------------------------------------------|---------------------------|
+| Project homepage              | marinesensitivity.org                | ioemazeudmar01.mms.doi.net/                     | /share/public/www/        |
+| Project documentation         | marinesensitivity.org/docs           | ioemazeudmar01.mms.doi.net/docs/                | /share/public/www/docs/   |
+| Composite Scores app          | app.marinesensitivity.org/mapgl      | ioemazeudmar01.mms.doi.net/app/mapgl            | (Shiny container)         |
+| Species Distribution app      | app.marinesensitivity.org/mapsp      | ioemazeudmar01.mms.doi.net/app/mapsp            | (Shiny container)         |
+| Public file server            | file.marinesensitivity.org           | ioemazeudmar01.mms.doi.net/file/                | /share/public/            |
 
 The `sync-pull.sh` script automatically syncs these from the external server where they are built by GitHub Actions and deployed to `/share/public/www/`.
 
@@ -590,10 +657,10 @@ The [NIST 800-53](https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/fina
 |---------------|---------|---------------------|
 | **AC** (Access Control) | AC-3, AC-6 | SSH key-based auth, least privilege, no shared credentials |
 | **AU** (Audit) | AU-2, AU-3 | All sync operations logged with timestamps; logs pushed to external for review |
-| **CM** (Configuration Mgmt) | CM-2, CM-3 | Docker containers provide immutable, versioned configurations; Watchtower only updates from trusted GHCR registry |
+| **CM** (Configuration Mgmt) | CM-2, CM-3 | Podman containers provide immutable, versioned configurations; `podman auto-update` only updates from trusted GHCR registry |
 | **IA** (Identification & Auth) | IA-2, IA-5 | Ed25519 SSH keys (no passwords); keys stored with restricted permissions |
 | **SC** (System & Comms Protection) | SC-8, SC-13 | All data in transit encrypted via SSH; TLS for HTTPS |
-| **SI** (System & Info Integrity) | SI-2, SI-3 | Red Hat `yum` updates for OS patching; Docker images scanned upstream |
+| **SI** (System & Info Integrity) | SI-2, SI-3 | Red Hat `yum` updates for OS patching; container images scanned upstream |
 
 ### DOI Information Security Policy
 
@@ -601,7 +668,7 @@ The [DOI Departmental Manual Part 375](https://www.doi.gov/elips/browse) and [DO
 
 - **Authority to Operate (ATO)** — the internal server should be registered in the DOI System Inventory and receive an ATO. The low-risk nature of the data (public scientific information) supports a streamlined assessment.
 - **Continuous monitoring** — the heartbeat mechanism and log synchronization provide continuous visibility into server health without requiring inbound network access.
-- **Incident response** — if the external server is compromised, the internal server's pull-only model limits exposure: it only reads data files and Docker images from trusted sources (GHCR, known SFTP endpoint).
+- **Incident response** — if the external server is compromised, the internal server's pull-only model limits exposure: it only reads data files and container images from trusted sources (GHCR, known SFTP endpoint).
 
 ### FedRAMP and Cloud Services
 
@@ -609,7 +676,7 @@ The external development server runs on **AWS**, which holds a [FedRAMP](https:/
 
 - The cloud infrastructure meets federal security requirements
 - AWS provides the physical and infrastructure security controls
-- The MST application layer (Docker containers, data files) operates within this authorized environment
+- The MST application layer (containers, data files) operates within this authorized environment
 
 The internal server is **not a cloud service** — it is a BOEM-managed on-premises server. The synchronization only reads from the FedRAMP-authorized AWS environment.
 
@@ -645,38 +712,36 @@ The following items require clarification or action before full deployment:
 
 ### 1. Operating system compatibility
 
-The internal BOEM server runs **Red Hat Enterprise Linux** (RHEL) with `yum`-based package management, while the external development server runs **Ubuntu** with `apt`. This should **not be a concern** because:
+The internal BOEM server runs **Red Hat Enterprise Linux 8** (RHEL 8) with `yum`-based package management, while the external development server runs **Ubuntu** with `apt`. This should **not be a concern** because:
 
-- All application services run inside Docker containers, which are OS-independent
-- Only host-level tools differ: `rclone`, `docker`, `cron` — all available on both platforms
-- Docker images built on Ubuntu will run identically on a RHEL host
+- All application services run inside containers, which are OS-independent
+- The internal server uses **podman** and **podman-compose** (included in RHEL 8); the external server uses Docker — both run OCI-compatible containers
+- Only host-level tools differ: `rclone`, `podman`/`docker`, `cron` — all available on both platforms
+- Container images built on Ubuntu will run identically on a RHEL host under podman
 - OS updates (via `yum` on RHEL, `apt` on Ubuntu) are independent of the containerized services
 
-**Action**: confirm RHEL version and ensure Docker CE/EE is installed and running.
+**Action**: confirm RHEL 8 version and ensure podman and podman-compose are installed and running.
 
 ### 2. Internal web server access (firewall rules)
 
-It appears that firewall rules on the BOEM network restrict server access to web content ports. To serve the MST applications internally:
+Firewall rules on the BOEM network may restrict server access to web content ports. To serve the MST applications internally:
 
-- **Port 80 (HTTP)** and **port 443 (HTTPS)** need to be open for inbound traffic from BOEM users (or at least the BOEM internal network)
+- **Port 80 (HTTP)** needs to be open for inbound traffic from BOEM users (or at least the BOEM internal network). Port 443 is not required since we serve HTTP-only internally.
 - On RHEL, this may involve `firewalld` (preferred) or `iptables`:
 
 ```bash
 # firewalld (recommended on RHEL)
 sudo firewall-cmd --permanent --add-service=http
-sudo firewall-cmd --permanent --add-service=https
 sudo firewall-cmd --reload
 
 # or iptables
 sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
 sudo iptables-save
 ```
 
-- **Internal DNS**: BOEM IT will need to create internal DNS records pointing a hostname (e.g., `msens.boem.gov` or `marinesensitivity.boem.gov`) to the internal server's IP address
-- If Caddy cannot obtain Let's Encrypt certificates (due to no external access), use internal CA certificates or configure Caddy for HTTP-only internally
+- **Internal DNS**: the server hostname `ioemazeudmar01.mms.doi.net` is already assigned by BOEM IT. All services are accessed via subdirectory paths on this hostname (e.g., `ioemazeudmar01.mms.doi.net/app/mapgl`).
 
-**Action**: coordinate with BOEM IT to open ports 80/443 for internal traffic and configure internal DNS.
+**Action**: confirm port 80 is open for internal traffic on the BOEM network.
 
 ### 3. External access and domain management
 
@@ -698,12 +763,25 @@ The synchronization depends on the internal server being able to make **outbound
 
 **Action**: confirm outbound SSH (port 22) is permitted from the internal server to the external server IP.
 
-### 5. Docker registry access
+### 5. Container registry access
 
-Watchtower needs **outbound HTTPS access** to GitHub Container Registry (`ghcr.io`) to pull updated Docker images. If HTTPS to external registries is restricted:
+`podman auto-update` needs **outbound HTTPS access** to GitHub Container Registry (`ghcr.io`) to pull the production Shiny image (`ghcr.io/marinesensitivity/shiny:latest`). If HTTPS to external registries is restricted:
 
 - Request firewall exception for `ghcr.io` (IP ranges published by GitHub)
-- Alternative: manually transfer Docker images via `docker save` / `docker load` and rclone
+- Alternative: manually transfer container images via `podman save` / `podman load`:
+
+```bash
+# on a machine with internet access
+podman pull ghcr.io/marinesensitivity/shiny:latest
+podman save ghcr.io/marinesensitivity/shiny:latest | gzip > shiny-latest.tar.gz
+
+# transfer to internal server (e.g., via rclone sftp, scp, or USB)
+
+# on internal server
+gunzip -c shiny-latest.tar.gz | podman load
+```
+
+See @sec-docker-image for full build and distribution details.
 
 **Action**: confirm outbound HTTPS to `ghcr.io` is permitted.
 
@@ -717,7 +795,7 @@ The MST data footprint should be estimated for disk provisioning on the internal
 | PMTiles | ~1-2 GB | slow (boundary updates) |
 | GeoPackage/CSV/TIF | ~2-5 GB | slow |
 | Static website/docs | ~100 MB | moderate (doc updates) |
-| Docker images | ~3-5 GB | moderate (app updates) |
+| Container images | ~3-5 GB | moderate (app updates) |
 | Logs | ~100 MB | steady |
 | **Total** | **~15-25 GB** | |
 
@@ -728,22 +806,19 @@ The MST data footprint should be estimated for disk provisioning on the internal
 While the external server has automated PostgreSQL backups, the internal production server should also have a backup plan:
 
 - DuckDB files can be backed up by the regular sync (authoritative copy is on external)
-- Docker volumes (Caddy certificates, config) should be included in any BOEM-managed backup system
+- Podman volumes (Caddy certificates, config) should be included in any BOEM-managed backup system
 - The `/share` directory should be on redundant storage or included in enterprise backup
 
 **Action**: coordinate with BOEM IT on backup integration.
 
 ### 8. Caddy TLS certificates on internal network
 
-Caddy automatically provisions TLS certificates via Let's Encrypt, but this requires:
+The production Caddyfile listens on `:80` (HTTP only) as the default. Since the internal server hostname (`ioemazeudmar01.mms.doi.net`) has no public DNS and is not internet-accessible, Caddy cannot use Let's Encrypt for automatic TLS.
 
-- External DNS resolution (the domain must resolve publicly)
-- HTTP challenge (port 80 accessible from the internet) or DNS challenge
+This is acceptable for an intranet-only server on the BOEM network. To upgrade to HTTPS in the future:
 
-If the internal server is not internet-accessible:
+- Use Caddy's [internal TLS](https://caddyserver.com/docs/caddyfile/directives/tls#internal) with a self-signed certificate (browsers will show a warning)
+- Use a BOEM-managed internal CA certificate and configure Caddy's `tls` directive to use it
+- Change the Caddyfile to listen on a hostname instead of `:80` and provide the cert/key files
 
-- Use Caddy's [internal TLS](https://caddyserver.com/docs/caddyfile/directives/tls#internal) for self-signed certificates
-- Use a BOEM-managed internal CA
-- Or serve HTTP-only if the server is only accessible from the BOEM intranet
-
-**Action**: determine TLS strategy based on whether the internal server will be internet-facing.
+**Action**: no action needed for initial deployment (HTTP-only is the default). Revisit if BOEM provides an internal CA certificate for HTTPS.

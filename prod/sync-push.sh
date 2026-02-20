@@ -35,14 +35,14 @@ rclone copy \
   --log-level INFO \
   2>> "$LOG"
 
-# --- push docker container logs ---
-echo "[$TIMESTAMP] exporting docker logs..." >> "$LOG"
-docker logs caddy  --since 24h > /tmp/docker-caddy.log  2>&1 || true
-docker logs shiny  --since 24h > /tmp/docker-shiny.log  2>&1 || true
+# --- push container logs ---
+echo "[$TIMESTAMP] exporting podman logs..." >> "$LOG"
+podman logs caddy  --since 24h > /tmp/podman-caddy.log  2>&1 || true
+podman logs shiny  --since 24h > /tmp/podman-shiny.log  2>&1 || true
 rclone copy \
   "/tmp" \
-  "${REMOTE}:${REMOTE_LOGS}/docker" \
-  --include "docker-*.log" \
+  "${REMOTE}:${REMOTE_LOGS}/podman" \
+  --include "podman-*.log" \
   --log-file "$LOG" \
   --log-level INFO \
   2>> "$LOG"

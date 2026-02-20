@@ -17,9 +17,9 @@ UPTIME=$(uptime -s 2>/dev/null || uptime | sed 's/.*up /up /' | sed 's/,.*//')
 DISK_FREE=$(df -h /share | tail -1 | awk '{print $4}')
 MEM_FREE=$(free -h 2>/dev/null | awk '/^Mem:/{print $4}' || echo "N/A")
 
-# check docker services
-CADDY_STATUS=$(docker inspect -f '{{.State.Status}}' caddy 2>/dev/null || echo "not found")
-SHINY_STATUS=$(docker inspect -f '{{.State.Status}}' shiny 2>/dev/null || echo "not found")
+# check container services
+CADDY_STATUS=$(podman inspect -f '{{.State.Status}}' caddy 2>/dev/null || echo "not found")
+SHINY_STATUS=$(podman inspect -f '{{.State.Status}}' shiny 2>/dev/null || echo "not found")
 
 # write heartbeat json
 cat > "$HEARTBEAT_FILE" <<EOF

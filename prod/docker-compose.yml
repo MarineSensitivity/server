@@ -1,4 +1,4 @@
-# production docker-compose.yml for BOEM internal server
+# production container configuration for BOEM internal server (podman-compose)
 # trimmed from the development server to essential services only:
 #   caddy (reverse proxy + file server), shiny (R apps)
 # data accessed directly from /share volume:
@@ -10,7 +10,6 @@ services:
     image: caddy:latest
     ports:
       - 80:80
-      - 443:443
     restart: unless-stopped
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
@@ -21,12 +20,14 @@ services:
   shiny:
     container_name: shiny
     image: ghcr.io/marinesensitivity/shiny:latest
+    labels:
+      io.containers.autoupdate: "registry"
     ports:
       - 3838:3838
     restart: unless-stopped
     volumes:
       - /share:/share
-      - /share/shiny_apps:/srv/shiny-server
+      - /share/github/MarineSensitivity/apps:/srv/shiny-server
     environment:
       # run as non-root shiny user
       SHINY_LOG_STDERR: 1

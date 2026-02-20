@@ -1,5 +1,6 @@
 # production Caddyfile for BOEM internal server
-# serves: shiny apps, static docs/website, pmtiles, public files
+# subdirectory routing on :80 (no TLS — no public DNS for ACME)
+# hostname: ioemazeudmar01.mms.doi.net
 
 (cors) {
 	@origin header Origin *
@@ -9,26 +10,30 @@
 	}
 }
 
-# shiny apps (reverse proxy to shiny container)
-app.marinesensitivity.org {
-  reverse_proxy shiny:3838
-}
+:80 {
+	# shiny apps — strip /app prefix, proxy to shiny container
+	handle_path /app/* {
+		reverse_proxy shiny:3838
+	}
 
-# public file server (data downloads, pmtiles)
-file.marinesensitivity.org {
-  import cors
-  root * /share/public
-  file_server browse {
-    precompressed zstd br gzip
-  }
-}
+	# public file server — strip /file prefix, browse /share/public
+	handle_path /file/* {
+		import cors
+		root * /share/public
+		file_server browse {
+			precompressed zstd br gzip
+		}
+	}
 
-# project documentation (quarto book, static html)
-marinesensitivity.org {
-  root * /share/public/www
-  file_server
-  handle /docs/* {
-    root * /share/public/www
-    file_server
-  }
+	# project documentation — serve static html from /share/public/www
+	handle /docs/* {
+		root * /share/public/www
+		file_server
+	}
+
+	# homepage — default handler
+	handle {
+		root * /share/public/www
+		file_server
+	}
 }
