@@ -564,7 +564,8 @@ After pushing the first image, set the GHCR package visibility to **Public** in 
 
 ```bash
 # build locally (docker on laptop)
-docker build -t ghcr.io/marinesensitivity/shiny:latest ./prod/shiny
+# docker build -t ghcr.io/marinesensitivity/shiny:latest ./prod/shiny
+docker build --platform linux/amd64 -t ghcr.io/marinesensitivity/shiny:latest ./prod/shiny 
 
 # push to GHCR
 docker push ghcr.io/marinesensitivity/shiny:latest

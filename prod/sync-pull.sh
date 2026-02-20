@@ -25,8 +25,8 @@ echo "[$TIMESTAMP] === sync-pull started ===" >> "$LOG"
 # --- data files (duckdb, gpkg, csv, tif) via rclone sftp ---
 echo "[$TIMESTAMP] pulling data files..." >> "$LOG"
 rclone sync \
-  "${REMOTE}:${REMOTE_DATA}/derived" \
-  "${LOCAL_DATA}/derived" \
+  "${REMOTE}:${REMOTE_DATA}/derived/v3" \
+  "${LOCAL_DATA}/derived/v3" \
   --include "*.duckdb" \
   --include "*.gpkg" \
   --include "*.csv" \
@@ -41,8 +41,8 @@ rclone sync \
 # --- big data files (sdm.duckdb) via rclone sftp ---
 echo "[$TIMESTAMP] pulling big data files..." >> "$LOG"
 rclone sync \
-  "${REMOTE}:${REMOTE_BIG}" \
-  "${LOCAL_BIG}" \
+  "${REMOTE}:${REMOTE_BIG}/v3" \
+  "${LOCAL_BIG}/v3" \
   --include "*.duckdb" \
   --transfers 2 \
   --checkers 4 \
