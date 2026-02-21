@@ -312,13 +312,13 @@ Add the following to the internal server's crontab (`crontab -e`):
 ```cron
 # marine sensitivity toolkit sync jobs
 # pull data and content from external server (hourly at :05)
-5 * * * * /share/github/server/prod/sync-pull.sh
+5 * * * * /share/github/MarineSensitivity/server/prod/sync-pull.sh
 
 # push logs to external server (hourly at :35)
-35 * * * * /share/github/server/prod/sync-push.sh
+35 * * * * /share/github/MarineSensitivity/server/prod/sync-push.sh
 
 # heartbeat ping (every 5 minutes)
-*/5 * * * * /share/github/server/prod/ping.sh
+*/5 * * * * /share/github/MarineSensitivity/server/prod/ping.sh
 ```
 
 ### Monitoring and alerting {#sec-monitoring}
