@@ -342,13 +342,15 @@ Add the following to the internal server's crontab (`crontab -e`):
 
 ### Monitoring and alerting {#sec-monitoring}
 
-The heartbeat strategy uses a push model — the internal server pushes a `heartbeat.json` file to the external server every 5 minutes. The external server runs a monitor script that checks the heartbeat age and sends email alerts if it goes stale.
+The heartbeat strategy uses a push model — the internal server pushes a `heartbeat.json` file to the external server every 5 minutes. The external server runs a monitor script that checks the heartbeat age and logs alerts if it goes stale.
+
+Currently alerts are written to `/var/log/msens/monitor-heartbeat.log`. Email notifications can be added later by updating the `send_alert()` function in `monitor-heartbeat.sh` to use Amazon SES, msmtp, or a webhook service.
 
 On the **external server**, add to crontab:
 
 ```cron
 # check internal server heartbeat (every 10 minutes)
-*/10 * * * * /share/github/server/prod/monitor-heartbeat.sh
+*/10 * * * * /share/github/MarineSensitivity/server/prod/monitor-heartbeat.sh
 ```
 
 The heartbeat JSON includes:
