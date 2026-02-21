@@ -123,7 +123,7 @@ All synchronization is **initiated by the internal server** — it pulls updates
 | Static website/docs | internal pulls   | external server | rclone (sftp) | hourly      | SSH      |
 | Shiny app source    | internal pulls   | GitHub repos    | git pull      | hourly      | HTTPS    |
 | Server config       | internal pulls   | GitHub repos    | git pull      | hourly      | HTTPS    |
-| Container images    | internal pulls   | GitHub GHCR     | podman auto-update | daily  | HTTPS    |
+| Container images    | internal pulls   | GitHub GHCR     | update-images.sh (cron) | daily  | HTTPS    |
 | Sync/Shiny/container logs | internal pushes | external server | rclone (sftp) | hourly   | SSH      |
 | Heartbeat           | internal pushes  | external server | rclone (sftp) | every 5 min | SSH     |
 
@@ -286,24 +286,37 @@ Make scripts executable:
 chmod +x prod/sync-pull.sh prod/sync-push.sh prod/ping.sh
 ```
 
-### Auto-update (podman auto-update) {#sec-auto-update}
+### Auto-update container images {#sec-auto-update}
 
-Podman's built-in [`auto-update`](https://docs.podman.io/en/latest/markdown/podman-auto-update.1.html) mechanism checks the container registry for newer images and restarts containers that have the `io.containers.autoupdate=registry` label. This replaces Watchtower (which requires Docker's socket).
+::: {.callout-warning}
+### `podman auto-update` does not work with podman-compose
 
-The shiny service in [`prod/docker-compose.yml`](prod/docker-compose.yml) already has the label set. Enable the systemd timer to run auto-update daily:
+Podman's built-in [`auto-update`](https://docs.podman.io/en/latest/markdown/podman-auto-update.1.html) requires containers managed as individual systemd services (via `podman generate systemd`). Containers started with `podman-compose` run inside a **pod** and produce the error:
 
-```bash
-# enable the podman auto-update timer (checks daily)
-sudo systemctl enable --now podman-auto-update.timer
-
-# verify the timer is active
-systemctl list-timers podman-auto-update.timer
-
-# manual one-time check
-podman auto-update
+```
+Error: looking up pod's systemd unit: pod has no infra container: no such container
 ```
 
-When the developer pushes a new Shiny image to GitHub Container Registry (GHCR), `podman auto-update` will detect the update on the next timer run, pull the new image, and restart the container.
+The `io.containers.autoupdate` label in `docker-compose.yml` has no effect in this setup.
+:::
+
+Instead, the **[`prod/update-images.sh`](prod/update-images.sh)** script handles automatic image updates. It runs daily via cron and:
+
+1. Pulls the latest `ghcr.io/marinesensitivity/shiny:latest` image
+2. Compares the image digest to the currently running version
+3. If changed: runs `podman-compose down` + `up -d` to restart with the new image
+4. If unchanged: exits without disruption
+5. Re-applies SELinux context and logs all actions to `/var/log/msens/update-images.log`
+
+```bash
+# manual one-time run
+sudo /share/github/MarineSensitivity/server/prod/update-images.sh
+
+# make script executable (first time)
+chmod +x /share/github/MarineSensitivity/server/prod/update-images.sh
+```
+
+When the developer pushes a new Shiny image to GitHub Container Registry (GHCR), the daily cron job will detect the update, pull the new image, and restart the container automatically.
 
 ### Cron schedule {#sec-cron}
 
@@ -319,6 +332,9 @@ Add the following to the internal server's crontab (`crontab -e`):
 
 # heartbeat ping (every 5 minutes)
 */5 * * * * /share/github/MarineSensitivity/server/prod/ping.sh
+
+# check for new container images and restart if updated (daily at 3:15 AM)
+15 3 * * * /share/github/MarineSensitivity/server/prod/update-images.sh
 ```
 
 ### Monitoring and alerting {#sec-monitoring}
@@ -416,7 +432,7 @@ cd /share/github/MarineSensitivity/server/prod
 sudo python3.8 -m podman_compose up -d
 ```
 
-`podman auto-update` (@sec-auto-update) automates this — the systemd timer checks GHCR daily and pulls new images automatically.
+The [`update-images.sh`](prod/update-images.sh) cron job (@sec-auto-update) automates this — it checks GHCR daily and restarts containers when a newer image is available.
 
 #### Offline fallback (save / load)
 
@@ -529,7 +545,7 @@ The [NIST 800-53](https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/fina
 |---------------|---------|---------------------|
 | **AC** (Access Control) | AC-3, AC-6 | SSH key-based auth, least privilege, no shared credentials |
 | **AU** (Audit) | AU-2, AU-3 | All sync operations logged with timestamps; logs pushed to external for review |
-| **CM** (Configuration Mgmt) | CM-2, CM-3 | Podman containers provide immutable, versioned configurations; `podman auto-update` only updates from trusted GHCR registry |
+| **CM** (Configuration Mgmt) | CM-2, CM-3 | Podman containers provide immutable, versioned configurations; `update-images.sh` only updates from trusted GHCR registry |
 | **IA** (Identification & Auth) | IA-2, IA-5 | Ed25519 SSH keys (no passwords); keys stored with restricted permissions |
 | **SC** (System & Comms Protection) | SC-8, SC-13 | All data in transit encrypted via SSH; TLS for HTTPS |
 | **SI** (System & Info Integrity) | SI-2, SI-3 | Red Hat `yum` updates for OS patching; container images scanned upstream |
@@ -707,11 +723,17 @@ This is acceptable for an intranet-only server on the BOEM network. To upgrade t
 
 **Action**: no action needed for initial deployment (HTTP-only is the default). Revisit if BOEM provides an internal CA certificate for HTTPS.
 
-### 9. Watchtower incompatibility with Podman
+### 9. Automatic container image updates
 
 Early planning referenced [Watchtower](https://containrrr.dev/watchtower/) for automatic container image updates. Watchtower requires the Docker socket (`/var/run/docker.sock`), which does **not exist** under Podman.
 
-**Status**: Resolved. Replaced Watchtower with Podman's built-in [`auto-update`](https://docs.podman.io/en/latest/markdown/podman-auto-update.1.html) mechanism (@sec-auto-update), which checks GHCR for newer images and restarts containers using the `io.containers.autoupdate=registry` label.
+Podman's built-in `auto-update` was tried next, but it requires containers to be managed as individual systemd services (via `podman generate systemd`). Since our containers are started with `podman-compose` (which creates a pod), `podman auto-update` fails with:
+
+```
+Error: looking up pod's systemd unit: pod has no infra container: no such container
+```
+
+**Status**: Resolved. A custom cron script [`prod/update-images.sh`](prod/update-images.sh) pulls the latest image daily, compares digests, and restarts containers only when a new image is available. See @sec-auto-update.
 
 ### 10. R package freshness in container images {#sec-issue-ppm}
 
