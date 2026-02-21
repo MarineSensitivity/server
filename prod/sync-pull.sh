@@ -15,6 +15,7 @@ REMOTE_WWW="/share/public/www"          # static website on external server
 LOCAL_DATA="/share/data"                # local data directory
 LOCAL_BIG="/share/data/big"             # local big data directory
 LOCAL_WWW="/share/public/www"           # local static website directory
+DATA_VERSION="v3"                      # dataset version to sync (change to v4 when ready)
 
 # github repos (app source pulled via git, not rclone)
 GH_APPS="/share/github/MarineSensitivity/apps"
@@ -25,8 +26,8 @@ echo "[$TIMESTAMP] === sync-pull started ===" >> "$LOG"
 # --- data files (duckdb, gpkg, csv, tif) via rclone sftp ---
 echo "[$TIMESTAMP] pulling data files..." >> "$LOG"
 rclone sync \
-  "${REMOTE}:${REMOTE_DATA}/derived/v3" \
-  "${LOCAL_DATA}/derived/v3" \
+  "${REMOTE}:${REMOTE_DATA}/derived/${DATA_VERSION}" \
+  "${LOCAL_DATA}/derived/${DATA_VERSION}" \
   --include "*.duckdb" \
   --include "*.gpkg" \
   --include "*.csv" \
@@ -41,8 +42,8 @@ rclone sync \
 # --- big data files (sdm.duckdb) via rclone sftp ---
 echo "[$TIMESTAMP] pulling big data files..." >> "$LOG"
 rclone sync \
-  "${REMOTE}:${REMOTE_BIG}/v3" \
-  "${LOCAL_BIG}/v3" \
+  "${REMOTE}:${REMOTE_BIG}/${DATA_VERSION}" \
+  "${LOCAL_BIG}/${DATA_VERSION}" \
   --include "*.duckdb" \
   --transfers 2 \
   --checkers 4 \
