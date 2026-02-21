@@ -168,6 +168,9 @@ On RHEL 8, the bare `podman-compose` command may not be on `$PATH` or may use th
 
 ```bash
 sudo python3.8 -m podman_compose up -d
+
+# or restart
+sudo python3.8 -m podman_compose down && sudo python3.8 -m podman_compose up -d
 ```
 
 The `sudo` is required for binding to port 80. The `python3.8 -m podman_compose` form ensures the correct Python interpreter is used.
