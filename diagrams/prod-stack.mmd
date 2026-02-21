@@ -1,0 +1,41 @@
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'primaryColor':       '#E8F5E9',
+    'primaryTextColor':   '#1a1a2e',
+    'primaryBorderColor': '#388E3C',
+    'lineColor':          '#388E3C',
+    'fontFamily':         'arial'
+  }
+}}%%
+
+flowchart TB
+  CLIENT["fa:fa-users Browser Client"]
+
+  subgraph DOCKER["fa:fa-box Podman (Production)"]
+    CADDY["fa:fa-server Caddy<br>port 80<br>- path-based routing<br>- static file server"]
+    SHINY["fa:fa-chart-bar Shiny<br>port 3838<br>- mapgl app<br>- mapsp app"]
+    WATCH["fa:fa-sync podman<br>auto-update"]
+  end
+
+  GHCR["fa:fa-box GHCR<br>ghcr.io/marinesensitivity/shiny"]
+
+  subgraph DATA["/share Volume"]
+    direction LR
+    DUCKDB["fa:fa-database DuckDB<br>sdm.duckdb"]
+    PMTILES["fa:fa-map PMTiles<br>*.pmtiles"]
+    STATIC["fa:fa-globe Static HTML<br>docs / website"]
+    FILES["fa:fa-file Ancillary<br>gpkg / csv / tif"]
+  end
+
+  CLIENT -->|"HTTP"| CADDY
+  CADDY -->|"/app/mapgl<br>/app/mapsp"| SHINY
+  CADDY -->|"/docs/*"| STATIC
+  CADDY -->|"/file/*"| PMTILES
+  SHINY -->|"read"| DUCKDB
+  SHINY -->|"read"| FILES
+  GHCR -.->|"pull image"| WATCH
+  WATCH -.->|"update"| SHINY
+
+  style DOCKER fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px
+  style DATA fill:#FFF8E1,stroke:#F9A825,stroke-width:2px

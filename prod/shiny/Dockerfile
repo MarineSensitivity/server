@@ -1,9 +1,9 @@
 # production Shiny image for BOEM internal server
-# based on rocker/geospatial:4.4.1 (same base as dev rstudio/Dockerfile)
+# based on rocker/geospatial:4.5.2 (R 4.5.2, PPM snapshot ~Jan 2026)
 # installs Shiny Server + R packages for mapgl and mapsp apps
 # app code is NOT baked in — mounted via volume at runtime
 
-FROM rocker/geospatial:4.4.1
+FROM rocker/geospatial:4.5.2
 
 # install shiny server
 RUN /rocker_scripts/install_shiny_server.sh
@@ -19,6 +19,9 @@ RUN install2.r --error \
   htmltools librarian mapgl plotly purrr RColorBrewer readr scales sf \
   shiny stringr terra tibble tidyr viridisLite \
   && rm -rf /tmp/downloaded_packages
+
+# override PPM snapshot for packages that need the very latest CRAN version
+RUN Rscript -e "install.packages(c('mapgl', 'dplyr'), repos='https://cran.r-project.org')"
 
 # install GitHub packages
 RUN installGithub.r \

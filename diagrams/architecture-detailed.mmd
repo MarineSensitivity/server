@@ -1,0 +1,149 @@
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'primaryColor':       '#E8F4FD',
+    'primaryTextColor':   '#1a1a2e',
+    'primaryBorderColor': '#4a90d9',
+    'lineColor':          '#4a90d9',
+    'secondaryColor':     '#FFF3E0',
+    'tertiaryColor':      '#E8F5E9',
+    'background':         '#FAFAFA',
+    'fontFamily':         'arial'
+  }
+}}%%
+
+flowchart TB
+
+  subgraph LAPTOP["fa:fa-laptop Developer Laptop"]
+    direction TB
+    L_CODE["fa:fa-code R / Quarto / Git"]
+    L_RSYNC["fa:fa-upload rsync via SSH"]
+    L_GIT["fa:fa-code-branch git push"]
+    L_CODE --> L_RSYNC
+    L_CODE --> L_GIT
+  end
+
+  subgraph GITHUB["{{ICON_GITHUB}} GitHub"]
+    direction TB
+
+    subgraph GH_REPOS["fa:fa-code-branch Repositories"]
+      direction LR
+      GH_APPS["fa:fa-window-maximize MarineSensitivity/apps"]
+      GH_SERVER["fa:fa-server MarineSensitivity/server"]
+      GH_DOCS["fa:fa-book MarineSensitivity/docs"]
+      GH_SITE["fa:fa-globe MarineSensitivity.github.io"]
+    end
+
+    subgraph GH_CICD["fa:fa-gears GitHub Actions + GHCR"]
+      direction LR
+      GH_ACTIONS["fa:fa-play CI/CD<br>Shiny image build"]
+      GH_GHCR["fa:fa-box GHCR<br>(container registry)"]
+      GH_PAGES["fa:fa-file-code GitHub Pages<br>(docs, site)"]
+      GH_ACTIONS --> GH_GHCR
+      GH_ACTIONS --> GH_PAGES
+    end
+
+    GH_REPOS --> GH_CICD
+  end
+
+  subgraph EXTERNAL["fa:fa-cloud External Server (AWS)"]
+    direction TB
+
+    subgraph EXT_DOCKER["{{ICON_DOCKER}} Docker Services"]
+      direction LR
+      E_CADDY["fa:fa-server Caddy<br>(reverse proxy)"]
+      E_SHINY["fa:fa-chart-bar Shiny<br>(apps)"]
+      E_RSTUDIO["fa:fa-laptop-code RStudio<br>(dev/debug)"]
+      E_PLUMBER["fa:fa-plug Plumber<br>(API)"]
+      E_POSTGIS["fa:fa-database PostGIS"]
+      E_TILE["fa:fa-map pg_tileserv"]
+    end
+
+    subgraph EXT_DATA["fa:fa-folder-open /share Data"]
+      direction LR
+      E_DUCKDB["fa:fa-database DuckDB<br>(.duckdb)"]
+      E_PMTILES["fa:fa-map PMTiles<br>(.pmtiles)"]
+      E_FILES["fa:fa-file GeoPackage<br>CSV / TIF"]
+      E_WWW["fa:fa-globe Static Web<br>(docs, site)"]
+    end
+
+    subgraph EXT_APPS["fa:fa-folder-open /share/github Apps"]
+      E_APP_CODE["fa:fa-code App source<br>(git pull)"]
+    end
+  end
+
+  subgraph INTERNAL["fa:fa-shield-halved Internal Server (BOEM)"]
+    direction TB
+
+    subgraph INT_DOCKER["fa:fa-box Podman Services (prod)"]
+      direction LR
+      I_CADDY["fa:fa-server Caddy<br>(reverse proxy +<br>file server)"]
+      I_SHINY["fa:fa-chart-bar Shiny<br>(apps)"]
+      I_WATCH["fa:fa-sync podman<br>auto-update"]
+    end
+
+    subgraph INT_DATA["fa:fa-folder-open /share Data"]
+      direction LR
+      I_DUCKDB["fa:fa-database DuckDB<br>(.duckdb)"]
+      I_PMTILES["fa:fa-map PMTiles<br>(.pmtiles)"]
+      I_FILES["fa:fa-file GeoPackage<br>CSV / TIF"]
+      I_WWW["fa:fa-globe Static Web<br>(docs, site)"]
+    end
+
+    subgraph INT_SYNC["fa:fa-sync Sync Services"]
+      direction LR
+      I_CRON["fa:fa-clock Cron"]
+      I_RCLONE["fa:fa-exchange-alt rclone<br>(sftp)"]
+      I_PING["fa:fa-heartbeat Heartbeat"]
+    end
+
+    subgraph INT_APPS["fa:fa-folder-open /share/github Apps"]
+      I_APP_CODE["fa:fa-code App source<br>(git pull)"]
+    end
+  end
+
+  %% laptop -> external server (data via rsync)
+  L_RSYNC ==>|"deploy data<br>(rsync ssh)"| EXT_DATA
+
+  %% laptop -> github (code via git push)
+  L_GIT ==>|"push code"| GH_REPOS
+
+  %% github -> external server (app code via git pull)
+  GH_REPOS -->|"git pull<br>(apps, server)"| E_APP_CODE
+
+  %% github -> internal server (app code via git pull)
+  GH_REPOS -->|"git pull<br>(apps, server)"| I_APP_CODE
+
+  %% internal pulls docker images from GHCR
+  I_WATCH ==>|"pull images<br>(HTTPS)"| GH_GHCR
+
+  %% internal pulls data from external
+  I_CRON -->|"schedule"| I_RCLONE
+  I_RCLONE ==>|"pull data<br>(sftp)"| EXT_DATA
+  I_RCLONE -.->|"push logs<br>(sftp)"| EXTERNAL
+  I_PING -.->|"heartbeat<br>(sftp)"| EXTERNAL
+
+  %% internal data flow
+  I_RCLONE --> INT_DATA
+  INT_DATA --- I_CADDY
+  INT_DATA --- I_SHINY
+  I_APP_CODE --- I_SHINY
+
+  %% external data flow
+  EXT_DATA --- E_SHINY
+  E_APP_CODE --- E_SHINY
+
+  %% styling
+  style LAPTOP fill:#E3F2FD,stroke:#1565C0,stroke-width:2px
+  style GITHUB fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px
+  style GH_REPOS fill:#EDE7F6,stroke:#9575CD,stroke-width:1px
+  style GH_CICD fill:#EDE7F6,stroke:#9575CD,stroke-width:1px
+  style EXTERNAL fill:#FFF3E0,stroke:#E65100,stroke-width:2px
+  style INTERNAL fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px
+  style EXT_DOCKER fill:#FFECB3,stroke:#F9A825,stroke-width:1px
+  style EXT_DATA fill:#FFF8E1,stroke:#F9A825,stroke-width:1px
+  style EXT_APPS fill:#FFF8E1,stroke:#F9A825,stroke-width:1px
+  style INT_DOCKER fill:#C8E6C9,stroke:#388E3C,stroke-width:1px
+  style INT_DATA fill:#E8F5E9,stroke:#388E3C,stroke-width:1px
+  style INT_SYNC fill:#DCEDC8,stroke:#558B2F,stroke-width:1px
+  style INT_APPS fill:#E8F5E9,stroke:#388E3C,stroke-width:1px

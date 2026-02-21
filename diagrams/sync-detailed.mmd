@@ -1,0 +1,90 @@
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'primaryColor':       '#E8F4FD',
+    'primaryTextColor':   '#1a1a2e',
+    'primaryBorderColor': '#4a90d9',
+    'lineColor':          '#4a90d9',
+    'fontFamily':         'arial'
+  }
+}}%%
+
+flowchart LR
+
+  subgraph INTERNAL["fa:fa-shield-halved BOEM Internal Server"]
+    direction TB
+    CRON["fa:fa-clock Cron Scheduler"]
+    PULL["fa:fa-download sync-pull.sh<br>(rclone sftp)"]
+    PUSH["fa:fa-upload sync-push.sh<br>(rclone sftp)"]
+    PING["fa:fa-heartbeat ping.sh<br>(heartbeat)"]
+    GITPULL["fa:fa-code-branch git pull<br>(app source)"]
+    TOWER["fa:fa-sync podman<br>auto-update"]
+
+    CRON -->|"hourly"| PULL
+    CRON -->|"hourly"| PUSH
+    CRON -->|"every 5 min"| PING
+    CRON -->|"hourly"| GITPULL
+    TOWER -->|"daily"| TOWER
+  end
+
+  subgraph GITHUB["{{ICON_GITHUB}} GitHub"]
+    direction TB
+
+    subgraph GH_REPOS["fa:fa-code-branch Repositories"]
+      GH_APPS["fa:fa-window-maximize apps"]
+      GH_SERVER["fa:fa-server server"]
+    end
+
+    subgraph GH_REG["fa:fa-box Container Registry"]
+      GHCR["GHCR<br>ghcr.io/marinesensitivity"]
+    end
+  end
+
+  subgraph EXTERNAL["fa:fa-cloud External AWS Server"]
+    direction TB
+
+    subgraph PULL_TARGETS["fa:fa-folder Data Files"]
+      DATA["fa:fa-database DuckDB<br>(.duckdb)"]
+      PMT["fa:fa-map PMTiles<br>(.pmtiles)"]
+      FILES["fa:fa-file GeoPackage<br>CSV / TIF"]
+      WWW["fa:fa-globe Website + Docs<br>(static HTML)"]
+    end
+
+    subgraph PUSH_TARGETS["fa:fa-file-alt Logs"]
+      LOGS["fa:fa-scroll Sync Logs<br>Shiny Logs<br>Container Logs"]
+      HB["fa:fa-heartbeat heartbeat.json"]
+    end
+
+    MON["fa:fa-bell monitor-heartbeat.sh<br>(alerts if stale)"]
+    HB --> MON
+  end
+
+  %% pull data from external server (internal initiates, sftp)
+  PULL ==>|"pull data<br>(sftp)"| PULL_TARGETS
+
+  %% pull app code from github (internal initiates, https)
+  GITPULL ==>|"pull code<br>(HTTPS)"| GH_REPOS
+
+  %% pull docker images from GHCR (internal initiates, https)
+  TOWER ==>|"pull images<br>(HTTPS)"| GHCR
+
+  %% push connections (internal initiates, sftp)
+  PUSH -.->|"push logs<br>(sftp)"| LOGS
+  PING -.->|"push heartbeat<br>(sftp)"| HB
+
+  %% legend
+  subgraph LEGEND["Legend"]
+    direction LR
+    LP["fa:fa-arrow-right Solid = pull (data/code in)"]
+    LD["fa:fa-arrow-right Dashed = push (logs out)"]
+  end
+
+  %% styling
+  style INTERNAL fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px
+  style GITHUB fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px
+  style GH_REPOS fill:#EDE7F6,stroke:#9575CD,stroke-width:1px
+  style GH_REG fill:#EDE7F6,stroke:#9575CD,stroke-width:1px
+  style EXTERNAL fill:#FFF3E0,stroke:#E65100,stroke-width:2px
+  style PULL_TARGETS fill:#FFF8E1,stroke:#F9A825,stroke-width:1px
+  style PUSH_TARGETS fill:#FFECB3,stroke:#F9A825,stroke-width:1px
+  style LEGEND fill:#F5F5F5,stroke:#9E9E9E,stroke-width:1px

@@ -1,0 +1,43 @@
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'primaryColor':       '#E8F4FD',
+    'primaryTextColor':   '#1a1a2e',
+    'primaryBorderColor': '#4a90d9',
+    'lineColor':          '#4a90d9',
+    'secondaryColor':     '#FFF3E0',
+    'tertiaryColor':      '#E8F5E9',
+    'background':         '#FAFAFA',
+    'fontFamily':         'arial'
+  }
+}}%%
+
+flowchart LR
+
+  LAPTOP["fa:fa-laptop Developer<br>Laptop"]
+
+  subgraph GITHUB["{{ICON_GITHUB}} GitHub"]
+    GH_REPOS["fa:fa-code-branch Repos"]
+    GH_GHCR["fa:fa-box GHCR"]
+  end
+
+  EXTERNAL["fa:fa-cloud Dev Server<br>(AWS)"]
+
+  subgraph BOEM["fa:fa-shield-halved BOEM Network"]
+    INTERNAL["fa:fa-server Prod Server<br>(Podman)"]
+  end
+
+  LAPTOP -->|"git push"| GH_REPOS
+  LAPTOP -->|"rsync data"| EXTERNAL
+  GH_REPOS -->|"CI/CD build"| GH_GHCR
+
+  INTERNAL ==>|"pull data<br>(rclone sftp)"| EXTERNAL
+  INTERNAL ==>|"pull code<br>(git)"| GH_REPOS
+  INTERNAL ==>|"pull images<br>(HTTPS)"| GH_GHCR
+  INTERNAL -.->|"push logs"| EXTERNAL
+
+  style LAPTOP fill:#E3F2FD,stroke:#1565C0,stroke-width:2px
+  style GITHUB fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px
+  style EXTERNAL fill:#FFF3E0,stroke:#E65100,stroke-width:2px
+  style BOEM fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px
+  style INTERNAL fill:#C8E6C9,stroke:#388E3C,stroke-width:2px

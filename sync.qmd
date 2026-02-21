@@ -9,7 +9,7 @@ format:
     toc: true
     toc-depth: 3
     number-sections: true
-    mermaid-format: png
+    mermaid-format: js
     theme: cosmo
     embed-resources: true
   docx:
@@ -37,161 +37,19 @@ To bridge this gap, the **internal production server must initiate all synchroni
 
 The MST infrastructure spans three tiers: developer laptops, an external cloud server (AWS), and the target internal BOEM server. The following diagram shows the overall software architecture and data flow.
 
-```{mermaid}
-%%| label: fig-architecture
-%%| fig-cap: "Overall server architecture showing developer laptop, GitHub (repos + container registry), external AWS server (Docker), and internal BOEM server (Podman) with container services and data flows."
-%%| fig-width: 10
+::: {.panel-tabset}
 
-%%{init: {
-  'theme': 'base',
-  'themeVariables': {
-    'primaryColor':       '#E8F4FD',
-    'primaryTextColor':   '#1a1a2e',
-    'primaryBorderColor': '#4a90d9',
-    'lineColor':          '#4a90d9',
-    'secondaryColor':     '#FFF3E0',
-    'tertiaryColor':      '#E8F5E9',
-    'background':         '#FAFAFA',
-    'fontFamily':         'arial'
-  }
-}}%%
+## Simple
 
-flowchart TB
+![Overall server architecture (simplified): developer laptop pushes code to GitHub and data to the dev server; the BOEM production server pulls everything inbound.](diagrams/architecture-simple.png){#fig-architecture-simple fig-alt="Simple architecture diagram showing laptop, GitHub, dev server, and BOEM prod server with push/pull arrows."}
 
-  subgraph LAPTOP["fa:fa-laptop Developer Laptop"]
-    direction TB
-    L_CODE["fa:fa-code R / Quarto / Git"]
-    L_RSYNC["fa:fa-upload rsync via SSH"]
-    L_GIT["fa:fa-code-branch git push"]
-    L_CODE --> L_RSYNC
-    L_CODE --> L_GIT
-  end
+## Detailed
 
-  subgraph GITHUB["fa:fa-github GitHub"]
-    direction TB
+![Detailed server architecture showing developer laptop, GitHub (repos + container registry), external AWS server (Docker), and internal BOEM server (Podman) with container services and data flows.](diagrams/architecture-detailed.png){#fig-architecture-detailed fig-alt="Detailed architecture diagram with all services, data stores, subgraphs, and labeled connections."}
 
-    subgraph GH_REPOS["fa:fa-code-branch Repositories"]
-      direction LR
-      GH_APPS["fa:fa-window-maximize MarineSensitivity/apps"]
-      GH_SERVER["fa:fa-server MarineSensitivity/server"]
-      GH_DOCS["fa:fa-book MarineSensitivity/docs"]
-      GH_SITE["fa:fa-globe MarineSensitivity.github.io"]
-    end
+:::
 
-    subgraph GH_CICD["fa:fa-gears GitHub Actions + GHCR"]
-      direction LR
-      GH_ACTIONS["fa:fa-play CI/CD<br>Shiny image build"]
-      GH_GHCR["fa:fa-box GHCR<br>(container registry)"]
-      GH_PAGES["fa:fa-file-code GitHub Pages<br>(docs, site)"]
-      GH_ACTIONS --> GH_GHCR
-      GH_ACTIONS --> GH_PAGES
-    end
-
-    GH_REPOS --> GH_CICD
-  end
-
-  subgraph EXTERNAL["fa:fa-cloud External Server (AWS)"]
-    direction TB
-
-    subgraph EXT_DOCKER["fa:fa-docker Docker Services"]
-      direction LR
-      E_CADDY["fa:fa-server Caddy<br>(reverse proxy)"]
-      E_SHINY["fa:fa-chart-bar Shiny<br>(apps)"]
-      E_RSTUDIO["fa:fa-laptop-code RStudio<br>(dev/debug)"]
-      E_PLUMBER["fa:fa-plug Plumber<br>(API)"]
-      E_POSTGIS["fa:fa-database PostGIS"]
-      E_TILE["fa:fa-map pg_tileserv"]
-    end
-
-    subgraph EXT_DATA["fa:fa-folder-open /share Data"]
-      direction LR
-      E_DUCKDB["fa:fa-database DuckDB<br>(.duckdb)"]
-      E_PMTILES["fa:fa-map PMTiles<br>(.pmtiles)"]
-      E_FILES["fa:fa-file GeoPackage<br>CSV / TIF"]
-      E_WWW["fa:fa-globe Static Web<br>(docs, site)"]
-    end
-
-    subgraph EXT_APPS["fa:fa-folder-open /share/github Apps"]
-      E_APP_CODE["fa:fa-code App source<br>(git pull)"]
-    end
-  end
-
-  subgraph INTERNAL["fa:fa-shield-halved Internal Server (BOEM)"]
-    direction TB
-
-    subgraph INT_DOCKER["fa:fa-box Podman Services (prod)"]
-      direction LR
-      I_CADDY["fa:fa-server Caddy<br>(reverse proxy +<br>file server)"]
-      I_SHINY["fa:fa-chart-bar Shiny<br>(apps)"]
-      I_WATCH["fa:fa-sync podman<br>auto-update"]
-    end
-
-    subgraph INT_DATA["fa:fa-folder-open /share Data"]
-      direction LR
-      I_DUCKDB["fa:fa-database DuckDB<br>(.duckdb)"]
-      I_PMTILES["fa:fa-map PMTiles<br>(.pmtiles)"]
-      I_FILES["fa:fa-file GeoPackage<br>CSV / TIF"]
-      I_WWW["fa:fa-globe Static Web<br>(docs, site)"]
-    end
-
-    subgraph INT_SYNC["fa:fa-sync Sync Services"]
-      direction LR
-      I_CRON["fa:fa-clock Cron"]
-      I_RCLONE["fa:fa-exchange-alt rclone<br>(sftp)"]
-      I_PING["fa:fa-heartbeat Heartbeat"]
-    end
-
-    subgraph INT_APPS["fa:fa-folder-open /share/github Apps"]
-      I_APP_CODE["fa:fa-code App source<br>(git pull)"]
-    end
-  end
-
-  %% laptop -> external server (data via rsync)
-  L_RSYNC ==>|"deploy data<br>(rsync ssh)"| EXT_DATA
-
-  %% laptop -> github (code via git push)
-  L_GIT ==>|"push code"| GH_REPOS
-
-  %% github -> external server (app code via git pull)
-  GH_REPOS -->|"git pull<br>(apps, server)"| E_APP_CODE
-
-  %% github -> internal server (app code via git pull)
-  GH_REPOS -->|"git pull<br>(apps, server)"| I_APP_CODE
-
-  %% internal pulls docker images from GHCR
-  I_WATCH ==>|"pull images<br>(HTTPS)"| GH_GHCR
-
-  %% internal pulls data from external
-  I_CRON -->|"schedule"| I_RCLONE
-  I_RCLONE ==>|"pull data<br>(sftp)"| EXT_DATA
-  I_RCLONE -.->|"push logs<br>(sftp)"| EXTERNAL
-  I_PING -.->|"heartbeat<br>(sftp)"| EXTERNAL
-
-  %% internal data flow
-  I_RCLONE --> INT_DATA
-  INT_DATA --- I_CADDY
-  INT_DATA --- I_SHINY
-  I_APP_CODE --- I_SHINY
-
-  %% external data flow
-  EXT_DATA --- E_SHINY
-  E_APP_CODE --- E_SHINY
-
-  %% styling
-  style LAPTOP fill:#E3F2FD,stroke:#1565C0,stroke-width:2px
-  style GITHUB fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px
-  style GH_REPOS fill:#EDE7F6,stroke:#9575CD,stroke-width:1px
-  style GH_CICD fill:#EDE7F6,stroke:#9575CD,stroke-width:1px
-  style EXTERNAL fill:#FFF3E0,stroke:#E65100,stroke-width:2px
-  style INTERNAL fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px
-  style EXT_DOCKER fill:#FFECB3,stroke:#F9A825,stroke-width:1px
-  style EXT_DATA fill:#FFF8E1,stroke:#F9A825,stroke-width:1px
-  style EXT_APPS fill:#FFF8E1,stroke:#F9A825,stroke-width:1px
-  style INT_DOCKER fill:#C8E6C9,stroke:#388E3C,stroke-width:1px
-  style INT_DATA fill:#E8F5E9,stroke:#388E3C,stroke-width:1px
-  style INT_SYNC fill:#DCEDC8,stroke:#558B2F,stroke-width:1px
-  style INT_APPS fill:#E8F5E9,stroke:#388E3C,stroke-width:1px
-```
+Diagram source files are in [`diagrams/`](diagrams/) — see [`diagrams/README.md`](diagrams/README.md) for rendering instructions.
 
 ### Current state (external only)
 
@@ -244,102 +102,17 @@ The key architectural simplification is replacing the PostGIS + pg_tileserv stac
 
 All synchronization is **initiated by the internal server** — it pulls updates from the external server and pushes logs back. No inbound connections to the BOEM network are required.
 
-```{mermaid}
-%%| label: fig-sync
-%%| fig-cap: "Synchronization flow between internal BOEM server, external AWS server, and GitHub. All connections are initiated by the internal server (outbound only)."
-%%| fig-width: 10
+::: {.panel-tabset}
 
-%%{init: {
-  'theme': 'base',
-  'themeVariables': {
-    'primaryColor':       '#E8F4FD',
-    'primaryTextColor':   '#1a1a2e',
-    'primaryBorderColor': '#4a90d9',
-    'lineColor':          '#4a90d9',
-    'fontFamily':         'arial'
-  }
-}}%%
+## Simple
 
-flowchart LR
+![Synchronization flow (simplified): the BOEM production server pulls data, code, and images; pushes only logs.](diagrams/sync-simple.png){#fig-sync-simple fig-alt="Simple sync diagram showing prod server pulling from dev server and GitHub, pushing logs back."}
 
-  subgraph INTERNAL["fa:fa-shield-halved BOEM Internal Server"]
-    direction TB
-    CRON["fa:fa-clock Cron Scheduler"]
-    PULL["fa:fa-download sync-pull.sh<br>(rclone sftp)"]
-    PUSH["fa:fa-upload sync-push.sh<br>(rclone sftp)"]
-    PING["fa:fa-heartbeat ping.sh<br>(heartbeat)"]
-    GITPULL["fa:fa-code-branch git pull<br>(app source)"]
-    TOWER["fa:fa-sync podman<br>auto-update"]
+## Detailed
 
-    CRON -->|"hourly"| PULL
-    CRON -->|"hourly"| PUSH
-    CRON -->|"every 5 min"| PING
-    CRON -->|"hourly"| GITPULL
-    TOWER -->|"daily"| TOWER
-  end
+![Detailed synchronization flow showing cron jobs, rclone scripts, git pull, podman auto-update, heartbeat monitoring, and all data/log targets.](diagrams/sync-detailed.png){#fig-sync-detailed fig-alt="Detailed sync diagram with cron scheduler, individual sync scripts, and all data file types."}
 
-  subgraph GITHUB["fa:fa-github GitHub"]
-    direction TB
-
-    subgraph GH_REPOS["fa:fa-code-branch Repositories"]
-      GH_APPS["fa:fa-window-maximize apps"]
-      GH_SERVER["fa:fa-server server"]
-    end
-
-    subgraph GH_REG["fa:fa-box Container Registry"]
-      GHCR["fa:fa-docker GHCR<br>ghcr.io/marinesensitivity"]
-    end
-  end
-
-  subgraph EXTERNAL["fa:fa-cloud External AWS Server"]
-    direction TB
-
-    subgraph PULL_TARGETS["fa:fa-folder Data Files"]
-      DATA["fa:fa-database DuckDB<br>(.duckdb)"]
-      PMT["fa:fa-map PMTiles<br>(.pmtiles)"]
-      FILES["fa:fa-file GeoPackage<br>CSV / TIF"]
-      WWW["fa:fa-globe Website + Docs<br>(static HTML)"]
-    end
-
-    subgraph PUSH_TARGETS["fa:fa-file-alt Logs"]
-      LOGS["fa:fa-scroll Sync Logs<br>Shiny Logs<br>Container Logs"]
-      HB["fa:fa-heartbeat heartbeat.json"]
-    end
-
-    MON["fa:fa-bell monitor-heartbeat.sh<br>(alerts if stale)"]
-    HB --> MON
-  end
-
-  %% pull data from external server (internal initiates, sftp)
-  PULL ==>|"pull data<br>(sftp)"| PULL_TARGETS
-
-  %% pull app code from github (internal initiates, https)
-  GITPULL ==>|"pull code<br>(HTTPS)"| GH_REPOS
-
-  %% pull docker images from GHCR (internal initiates, https)
-  TOWER ==>|"pull images<br>(HTTPS)"| GHCR
-
-  %% push connections (internal initiates, sftp)
-  PUSH -.->|"push logs<br>(sftp)"| LOGS
-  PING -.->|"push heartbeat<br>(sftp)"| HB
-
-  %% legend
-  subgraph LEGEND["Legend"]
-    direction LR
-    LP["fa:fa-arrow-right Solid = pull (data/code in)"]
-    LD["fa:fa-arrow-right Dashed = push (logs out)"]
-  end
-
-  %% styling
-  style INTERNAL fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px
-  style GITHUB fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px
-  style GH_REPOS fill:#EDE7F6,stroke:#9575CD,stroke-width:1px
-  style GH_REG fill:#EDE7F6,stroke:#9575CD,stroke-width:1px
-  style EXTERNAL fill:#FFF3E0,stroke:#E65100,stroke-width:2px
-  style PULL_TARGETS fill:#FFF8E1,stroke:#F9A825,stroke-width:1px
-  style PUSH_TARGETS fill:#FFECB3,stroke:#F9A825,stroke-width:1px
-  style LEGEND fill:#F5F5F5,stroke:#9E9E9E,stroke-width:1px
-```
+:::
 
 ### Sync summary
 
@@ -358,23 +131,47 @@ flowchart LR
 
 ### Prerequisites
 
-On the **internal BOEM server** (Red Hat Linux):
+On the **internal BOEM server** (RHEL 8.10):
 
 ```bash
-# install rclone
-sudo yum install -y rclone
+# install rclone (not in standard RHEL/EPEL repos — use official script)
+curl https://rclone.org/install.sh | sudo bash
+# alternatives:
+#   sudo yum install -y epel-release && sudo yum install -y rclone  # if EPEL available
+#   download binary from https://rclone.org/downloads/ and install manually
 
-# install podman and podman-compose (RHEL 8)
-sudo yum install -y podman podman-compose
+# install podman (included in RHEL 8 AppStream)
+sudo yum install -y podman
 sudo systemctl enable --now podman.socket
+
+# fix UID/GID mapping for rootless podman (if needed)
+sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER
+podman system migrate
+
+# install podman-compose via Python 3.8 (RHEL 8 ships Python 3.6, which is too old)
+sudo dnf install -y python38
+sudo pip3.8 install podman-compose
 
 # create log directory
 sudo mkdir -p /var/log/msens
 sudo chown $USER:$USER /var/log/msens
 
-# create data directories
-sudo mkdir -p /share/data /share/public/www /share/github/MarineSensitivity /share/logs
+# create data and service directories
+sudo mkdir -p /share/data /share/public/www /share/github/MarineSensitivity \
+  /share/logs /share/caddy/data /share/caddy/config /share/private
 ```
+
+::: {.callout-important}
+### Always use `sudo python3.8 -m podman_compose` on RHEL 8
+
+On RHEL 8, the bare `podman-compose` command may not be on `$PATH` or may use the wrong Python version. Always invoke it as:
+
+```bash
+sudo python3.8 -m podman_compose up -d
+```
+
+The `sudo` is required for binding to port 80. The `python3.8 -m podman_compose` form ensures the correct Python interpreter is used.
+:::
 
 ### SSH key setup
 
@@ -384,8 +181,70 @@ Generate an SSH key pair on the internal server for passwordless authentication 
 # on internal server
 ssh-keygen -t ed25519 -f ~/.ssh/msens_sync -N "" -C "msens-sync@boem"
 
+# set restrictive permissions on private keys
+chmod 600 ~/.ssh/msens_sync
+chmod 600 ~/.ssh/msens_key_pair.pem  # if using an AWS .pem key
+
 # copy public key to external server (one-time manual step)
 ssh-copy-id -i ~/.ssh/msens_sync.pub ubuntu@msens1.marinesensitivity.org
+```
+
+If the external server only allows key-based authentication (no password login), you need an **existing** authorized key to bootstrap. Use an AWS `.pem` key pair that is already authorized on the target:
+
+```bash
+# bootstrap: use existing .pem key to copy the new sync key
+ssh-copy-id -i ~/.ssh/msens_sync.pub \
+  -o "IdentityFile=~/.ssh/msens_key_pair.pem" \
+  ubuntu@msens1.marinesensitivity.org
+```
+
+After this, the `msens_sync` key is authorized and can be used by rclone and cron jobs without needing the `.pem` key.
+
+### SELinux context for container volumes {#sec-selinux}
+
+RHEL 8 runs SELinux in **enforcing** mode by default. Podman containers cannot read or write host-mounted volumes unless those files carry the `container_file_t` SELinux type label. Without this, containers start but apps fail with "permission denied" errors — even when standard Unix permissions look correct.
+
+Apply the context to the entire `/share` tree:
+
+```bash
+# apply SELinux context to all shared data (recursive)
+sudo chcon -R -t container_file_t /share
+```
+
+For more targeted application, label specific paths:
+
+```bash
+sudo chcon -R -t container_file_t /share/data
+sudo chcon -R -t container_file_t /share/private
+sudo chcon -R -t container_file_t /share/public
+sudo chcon -R -t container_file_t /share/caddy
+sudo chcon -t container_file_t /share/github/MarineSensitivity/server/prod/Caddyfile
+```
+
+::: {.callout-note}
+### `container_file_t` vs `svirt_sandbox_file_t`
+
+`container_file_t` is the modern, preferred SELinux type name. The older name `svirt_sandbox_file_t` is an alias and still works, but `container_file_t` is what `chcon` and audit logs use on RHEL 8+.
+:::
+
+::: {.callout-tip}
+### Re-run after sync creates new files
+
+The `chcon` context does **not** propagate to newly created files. After running `sync-pull.sh` for the first time (or whenever new files appear in `/share`), re-run:
+
+```bash
+sudo chcon -R -t container_file_t /share
+```
+:::
+
+Verify the context is applied:
+
+```bash
+# check SELinux labels on data files
+ls -lZ /share/data
+
+# check for recent SELinux denials
+sudo ausearch -m avc -ts recent
 ```
 
 ### rclone configuration {#sec-rclone}
@@ -495,59 +354,28 @@ If no heartbeat arrives for 15 minutes, the monitor sends an email alert with th
 
 The production container configuration ([`prod/docker-compose.yml`](prod/docker-compose.yml), run with `podman-compose`) provides only the essential services:
 
-```{mermaid}
-%%| label: fig-prod-stack
-%%| fig-cap: "Production server Podman services and data flow. Caddy serves static content and proxies Shiny. Data files are mounted as volumes."
-%%| fig-width: 8
-
-%%{init: {
-  'theme': 'base',
-  'themeVariables': {
-    'primaryColor':       '#E8F5E9',
-    'primaryTextColor':   '#1a1a2e',
-    'primaryBorderColor': '#388E3C',
-    'lineColor':          '#388E3C',
-    'fontFamily':         'arial'
-  }
-}}%%
-
-flowchart TB
-  CLIENT["fa:fa-users Browser Client"]
-
-  subgraph DOCKER["fa:fa-box Podman (Production)"]
-    CADDY["fa:fa-server Caddy<br>port 80<br>- path-based routing<br>- static file server"]
-    SHINY["fa:fa-chart-bar Shiny<br>port 3838<br>- mapgl app<br>- mapsp app"]
-    WATCH["fa:fa-sync podman<br>auto-update"]
-  end
-
-  GHCR["fa:fa-box GHCR<br>ghcr.io/marinesensitivity/shiny"]
-
-  subgraph DATA["/share Volume"]
-    direction LR
-    DUCKDB["fa:fa-database DuckDB<br>sdm.duckdb"]
-    PMTILES["fa:fa-map PMTiles<br>*.pmtiles"]
-    STATIC["fa:fa-globe Static HTML<br>docs / website"]
-    FILES["fa:fa-file Ancillary<br>gpkg / csv / tif"]
-  end
-
-  CLIENT -->|"HTTP"| CADDY
-  CADDY -->|"/app/mapgl<br>/app/mapsp"| SHINY
-  CADDY -->|"/docs/*"| STATIC
-  CADDY -->|"/file/*"| PMTILES
-  SHINY -->|"read"| DUCKDB
-  SHINY -->|"read"| FILES
-  GHCR -.->|"pull image"| WATCH
-  WATCH -.->|"update"| SHINY
-
-  style DOCKER fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px
-  style DATA fill:#FFF8E1,stroke:#F9A825,stroke-width:2px
-```
+![Production server Podman services and data flow. Caddy serves static content and proxies Shiny. Data files are mounted as volumes.](diagrams/prod-stack.png){#fig-prod-stack fig-alt="Production stack diagram showing Caddy, Shiny, podman auto-update, GHCR, and /share volume with data files."}
 
 ### Container image build and distribution {#sec-docker-image}
 
 The production Shiny image (`ghcr.io/marinesensitivity/shiny:latest`) is built from [`prod/shiny/Dockerfile`](prod/shiny/Dockerfile) and pushed to GitHub Container Registry (GHCR). A [GitHub Actions workflow](`.github/workflows/docker-shiny.yml`) automatically builds and pushes the image when the Dockerfile changes on `main`. Manual builds can also be triggered via `workflow_dispatch`.
 
 **When to rebuild**: only when R package dependencies change (adding/removing/upgrading packages). App code changes do **not** require an image rebuild — app source is mounted as a volume.
+
+#### R package version pinning (PPM snapshots) {#sec-ppm}
+
+The `rocker/geospatial` base image configures R to install packages from a [Posit Public Package Manager (PPM)](https://packagemanager.posit.co/) **date-pinned snapshot**. This means `install2.r` and `install.packages()` install the versions available on the snapshot date — not the latest CRAN versions.
+
+This can cause problems when a Shiny app depends on a newer package version than what was available on the snapshot date. For example, on `rocker/geospatial:4.4.1` (PPM snapshot ~Oct 2024), `mapgl` installed as **0.1.3** — but the mapgl Shiny app requires **0.4.4+** (which introduced `mapboxgl()` and `maplibre()` functions used by the app).
+
+**Fix**: upgrade the base image to `rocker/geospatial:4.5.2` (PPM snapshot ~Jan 2026), which includes much newer package versions. As additional insurance, an explicit CRAN override is added in the Dockerfile after the `install2.r` block:
+
+```dockerfile
+# override PPM snapshot for packages that need the very latest CRAN version
+RUN Rscript -e "install.packages(c('mapgl', 'dplyr'), repos='https://cran.r-project.org')"
+```
+
+This ensures `mapgl` and `dplyr` are always installed from live CRAN regardless of the PPM snapshot date.
 
 #### First-time GHCR setup
 
@@ -559,6 +387,12 @@ cat ~'/My Drive/private/GITHUB_PAT_full-scope_2024-12-03_no-expiration.txt' | do
 ```
 
 After pushing the first image, set the GHCR package visibility to **Public** in the package settings at `https://github.com/orgs/MarineSensitivity/packages/container/shiny/settings`.
+
+::: {.callout-important}
+### GHCR package must be Public for unauthenticated pulls
+
+If the GHCR package is not set to **Public**, `podman pull` on the internal server will fail with an authentication error. Either set the package to Public (recommended for this open-source project) or run `podman login ghcr.io` on the internal server with a GitHub Personal Access Token.
+:::
 
 #### Manual build and push (from developer laptop)
 
@@ -579,7 +413,7 @@ podman pull ghcr.io/marinesensitivity/shiny:latest
 
 # restart with the new image
 cd /share/github/MarineSensitivity/server/prod
-podman-compose up -d
+sudo python3.8 -m podman_compose up -d
 ```
 
 `podman auto-update` (@sec-auto-update) automates this — the systemd timer checks GHCR daily and pulls new images automatically.
@@ -602,6 +436,12 @@ podman-compose up -d
 
 ### Deployment
 
+::: {.callout-tip}
+### Container registry prompt on RHEL
+
+When pulling images with Podman on RHEL 8, you may be prompted to select a registry (e.g., `docker.io`, `quay.io`, `registry.fedoraproject.org`). Select `docker.io/library/caddy:latest` for Caddy. To avoid the prompt, configure `/etc/containers/registries.conf` with `unqualified-search-registries = ["docker.io"]`.
+:::
+
 ```bash
 # clone repos on internal server
 mkdir -p /share/github/MarineSensitivity
@@ -609,12 +449,15 @@ cd /share/github/MarineSensitivity
 git clone https://github.com/MarineSensitivity/server.git
 git clone https://github.com/MarineSensitivity/apps.git
 
+# apply SELinux context to /share (RHEL 8 — see @sec-selinux)
+sudo chcon -R -t container_file_t /share
+
 # pull the shiny image from GHCR (first time)
 podman pull ghcr.io/marinesensitivity/shiny:latest
 
 # start services
 cd server/prod
-podman-compose up -d
+sudo python3.8 -m podman_compose up -d
 
 # verify
 podman ps
@@ -622,6 +465,34 @@ curl -s http://localhost/app/mapgl | head -5
 ```
 
 The Shiny apps are mounted as a volume from the `apps` repo clone at `/share/github/MarineSensitivity/apps` into the Shiny container at `/srv/shiny-server`. This means app code updates only require a `git pull` in the apps repo — no image rebuild needed.
+
+#### Required data files checklist
+
+The following files must be present on the internal server for the Shiny apps to function correctly:
+
+| File / path | Source | Notes |
+|---|---|---|
+| `/share/private/mapbox_token_bdbest.txt` | manual copy | Mapbox API token — **not** in git or rclone sync |
+| `/share/data/big/v3/sdm.duckdb` | `rclone` sync | Species distribution model database (~5 GB) |
+| `/share/data/derived/v3/*.gpkg, *.csv, *.tif` | `rclone` sync | Derived spatial datasets |
+| `apps/mapgl/data/taxonomic_hierarchy_worms_*.csv` | `git pull` | Taxonomy lookup tables (bundled in apps repo) |
+
+::: {.callout-important}
+### Mapbox token is a secret
+
+The file `/share/private/mapbox_token_bdbest.txt` contains a private API key and must be **manually copied** to the server. It is not included in git repos or rclone sync scripts. Without this file, the mapgl app cannot render base map tiles.
+:::
+
+::: {.callout-note}
+### Shiny app_cache write permission
+
+Shiny Server may log a non-fatal warning about not being able to write to `app_cache/` directories inside the mounted app volume. This can be ignored or resolved by creating writable cache directories:
+
+```bash
+mkdir -p /share/github/MarineSensitivity/apps/mapgl/app_cache
+chmod 777 /share/github/MarineSensitivity/apps/mapgl/app_cache
+```
+:::
 
 ### Migrating static web content
 
@@ -721,7 +592,13 @@ The internal BOEM server runs **Red Hat Enterprise Linux 8** (RHEL 8) with `yum`
 - Container images built on Ubuntu will run identically on a RHEL host under podman
 - OS updates (via `yum` on RHEL, `apt` on Ubuntu) are independent of the containerized services
 
-**Action**: confirm RHEL 8 version and ensure podman and podman-compose are installed and running.
+Confirmed deployment on **RHEL 8.10** with the following key findings:
+
+- **rclone** is not in the standard RHEL/EPEL repos — must be installed via the official install script (`curl https://rclone.org/install.sh | sudo bash`)
+- **podman-compose** on RHEL 8 requires Python 3.8 (`dnf install python38`) and is invoked as `sudo python3.8 -m podman_compose` (not bare `podman-compose`)
+- **SELinux** enforcing mode requires `container_file_t` context on mounted volumes — see @sec-selinux
+
+**Action**: Resolved. See @sec-implementation for updated prerequisites.
 
 ### 2. Internal web server access (firewall rules)
 
@@ -800,7 +677,13 @@ The MST data footprint should be estimated for disk provisioning on the internal
 | Logs | ~100 MB | steady |
 | **Total** | **~15-25 GB** | |
 
-**Action**: confirm `/share` volume has sufficient capacity (recommend 50+ GB for headroom).
+::: {.callout-warning}
+### Root partition reached 100% during initial sync
+
+The BOEM server's root partition (`/`) is only **17 GB**. During the first `rclone` sync, the disk filled completely, causing sync failures and preventing new container pulls. The `sync-pull.sh` script was updated to limit synced data to `v3/` only (excluding older dataset versions).
+:::
+
+**Action**: Partially resolved — sync scripts are limited to v3 data. Recommend provisioning a dedicated `/share` volume with **50+ GB** capacity separate from the root partition.
 
 ### 7. Backup strategy for internal server
 
@@ -823,3 +706,25 @@ This is acceptable for an intranet-only server on the BOEM network. To upgrade t
 - Change the Caddyfile to listen on a hostname instead of `:80` and provide the cert/key files
 
 **Action**: no action needed for initial deployment (HTTP-only is the default). Revisit if BOEM provides an internal CA certificate for HTTPS.
+
+### 9. Watchtower incompatibility with Podman
+
+Early planning referenced [Watchtower](https://containrrr.dev/watchtower/) for automatic container image updates. Watchtower requires the Docker socket (`/var/run/docker.sock`), which does **not exist** under Podman.
+
+**Status**: Resolved. Replaced Watchtower with Podman's built-in [`auto-update`](https://docs.podman.io/en/latest/markdown/podman-auto-update.1.html) mechanism (@sec-auto-update), which checks GHCR for newer images and restarts containers using the `io.containers.autoupdate=registry` label.
+
+### 10. R package freshness in container images {#sec-issue-ppm}
+
+The `rocker/geospatial` base image pins all R packages to a [Posit Public Package Manager (PPM)](https://packagemanager.posit.co/) date snapshot corresponding to the image build date. This means `install2.r` installs the version available on that snapshot date — not the latest CRAN version.
+
+On `rocker/geospatial:4.4.1` (PPM snapshot ~Oct 2024), `mapgl` was installed as **0.1.3**, but the Shiny app requires **0.4.4+**. Upgrading to `rocker/geospatial:4.5.2` (PPM snapshot ~Jan 2026) resolves most version gaps, and an explicit CRAN override in the Dockerfile (@sec-ppm) ensures critical packages are always current.
+
+**Status**: Resolved. See @sec-ppm for the Dockerfile pattern.
+
+### 11. SELinux enforcement on RHEL 8 {#sec-issue-selinux}
+
+Red Hat Enterprise Linux 8 runs SELinux in **enforcing** mode by default. SELinux blocks Podman containers from reading or writing host-mounted volumes unless those files carry the `container_file_t` SELinux type label.
+
+Symptoms: containers start but apps fail silently or log "permission denied" errors when accessing `/share` data, even though standard Unix permissions (`ls -l`) look correct.
+
+**Status**: Resolved. Apply the `container_file_t` context to `/share` before starting containers. See @sec-selinux for commands and verification.
