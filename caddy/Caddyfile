@@ -63,3 +63,22 @@ titiler.marinesensitivity.org {
 titilecache.marinesensitivity.org {
   reverse_proxy titilecache:6082
 }
+
+pmtiles.marinesensitivity.org {
+  import cors
+
+  # server-side tile decoding: ZXY + TileJSON
+  handle_path /tiles/* {
+    pmtiles_proxy {
+      bucket /share/data/derived/v3/pmtiles
+      cache_size 256
+      public_url https://pmtiles.marinesensitivity.org/tiles
+    }
+  }
+
+  # raw .pmtiles file serving for client-side PMTiles protocol (add_pmtiles_source)
+  handle {
+    root * /share/data/derived/v3/pmtiles
+    file_server
+  }
+}

@@ -25,6 +25,23 @@
 		}
 	}
 
+	# pmtiles: server-side tile decoding (ZXY + TileJSON)
+	handle_path /pmtiles/tiles/* {
+		import cors
+		pmtiles_proxy {
+			bucket /share/data/derived/v3/pmtiles
+			cache_size 256
+			public_url /pmtiles/tiles
+		}
+	}
+
+	# pmtiles: raw file serving for client-side PMTiles protocol
+	handle_path /pmtiles/* {
+		import cors
+		root * /share/data/derived/v3/pmtiles
+		file_server
+	}
+
 	# project documentation — serve static html from /share/public/www
 	handle /docs/* {
 		root * /share/public/www

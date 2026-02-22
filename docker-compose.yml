@@ -3,7 +3,7 @@ version: "3.9"
 services:
   caddy:
     container_name: caddy
-    image: caddy:latest
+    build: ./caddy
     ports:
       - 80:80
       - 443:443

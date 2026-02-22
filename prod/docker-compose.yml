@@ -7,7 +7,7 @@
 services:
   caddy:
     container_name: caddy
-    image: caddy:latest
+    build: ./caddy
     ports:
       - 80:80
     restart: unless-stopped
@@ -29,5 +29,5 @@ services:
       - /share:/share
       - /share/github/MarineSensitivity/apps:/srv/shiny-server
     environment:
-      # run as non-root shiny user
+      MSENS_ENV: prod
       SHINY_LOG_STDERR: 1
