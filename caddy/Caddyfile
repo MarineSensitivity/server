@@ -1,3 +1,7 @@
+{
+  order pmtiles_proxy before file_server
+}
+
 (cors) {
 	@origin header Origin *
 	header @origin {

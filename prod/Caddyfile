@@ -1,3 +1,7 @@
+{
+  order pmtiles_proxy before file_server
+}
+
 # production Caddyfile for BOEM internal server
 # subdirectory routing on :80 (no TLS — no public DNS for ACME)
 # hostname: ioemazeudmar01.mms.doi.net
