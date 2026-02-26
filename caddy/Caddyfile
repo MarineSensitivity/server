@@ -12,10 +12,18 @@ api.marinesensitivity.org {
 
 file.marinesensitivity.org {
   import cors
-  root * /share/public
-  file_server browse {
-    # serve *.zst, *.br or *.gz if file exists and client supports precompressed files
-    precompressed zstd br gzip
+
+  # raw pmtiles for client-side PMTiles protocol (add_pmtiles_source)
+  handle_path /pmtiles/* {
+    root * /share/data/derived/v3/pmtiles
+    file_server
+  }
+
+  handle {
+    root * /share/public
+    file_server browse {
+      precompressed zstd br gzip
+    }
   }
 }
 
@@ -67,18 +75,12 @@ titilecache.marinesensitivity.org {
 pmtiles.marinesensitivity.org {
   import cors
 
-  # server-side tile decoding: ZXY + TileJSON
+  # server-side tile decoding: ZXY + TileJSON (for QGIS, leaflet, etc.)
   handle_path /tiles/* {
     pmtiles_proxy {
       bucket /share/data/derived/v3/pmtiles
       cache_size 256
       public_url https://pmtiles.marinesensitivity.org/tiles
     }
-  }
-
-  # raw .pmtiles file serving for client-side PMTiles protocol (add_pmtiles_source)
-  handle {
-    root * /share/data/derived/v3/pmtiles
-    file_server
   }
 }
