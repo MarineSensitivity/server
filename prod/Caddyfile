@@ -33,7 +33,7 @@
 	handle_path /pmtiles/tiles/* {
 		import cors
 		pmtiles_proxy {
-			bucket /share/data/derived/v3/pmtiles
+			bucket file:///share/data/derived/v3/pmtiles
 			cache_size 256
 			public_url /pmtiles/tiles
 		}

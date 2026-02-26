@@ -1,3 +1,5 @@
+# docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+
 {
   order pmtiles_proxy before file_server
 }
@@ -82,7 +84,7 @@ pmtiles.marinesensitivity.org {
   # server-side tile decoding: ZXY + TileJSON (for QGIS, leaflet, etc.)
   handle_path /tiles/* {
     pmtiles_proxy {
-      bucket /share/data/derived/v3/pmtiles
+      bucket file:///share/data/derived/v3/pmtiles
       cache_size 256
       public_url https://pmtiles.marinesensitivity.org/tiles
     }
