@@ -22,7 +22,7 @@ file.marinesensitivity.org {
   # raw pmtiles for client-side PMTiles protocol (add_pmtiles_source)
   handle_path /pmtiles/* {
     root * /share/data/derived/v3/pmtiles
-    file_server
+    file_server browse
   }
 
   handle {
