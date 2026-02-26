@@ -43,7 +43,7 @@
 	handle_path /pmtiles/* {
 		import cors
 		root * /share/data/derived/v3/pmtiles
-		file_server
+		file_server browse
 	}
 
 	# project documentation — serve static html from /share/public/www
