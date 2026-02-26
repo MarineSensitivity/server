@@ -1,7 +1,3 @@
-{
-  order pmtiles_proxy before file_server
-}
-
 # production Caddyfile for BOEM internal server
 # subdirectory routing on :80 (no TLS — no public DNS for ACME)
 # hostname: ioemazeudmar01.mms.doi.net
@@ -26,16 +22,6 @@
 		root * /share/public
 		file_server browse {
 			precompressed zstd br gzip
-		}
-	}
-
-	# pmtiles: server-side tile decoding (ZXY + TileJSON)
-	handle_path /pmtiles/tiles/* {
-		import cors
-		pmtiles_proxy {
-			bucket file:///share/data/derived/v3/pmtiles
-			cache_size 256
-			public_url /pmtiles/tiles
 		}
 	}
 

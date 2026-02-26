@@ -7,7 +7,7 @@
 services:
   caddy:
     container_name: caddy
-    build: ./caddy
+    image: caddy:latest
     ports:
       - 80:80
     restart: unless-stopped
