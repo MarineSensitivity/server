@@ -107,6 +107,7 @@ fi
 echo "[$TIMESTAMP] setting up v3 legacy apps..." >> "$LOG"
 GH_APPS_V3="/share/github/MarineSensitivity/apps_v3"
 if [ ! -d "$GH_APPS_V3/.git" ]; then
+  rm -rf "$GH_APPS_V3"
   git clone --branch v3 --single-branch \
     https://github.com/MarineSensitivity/apps.git "$GH_APPS_V3" >> "$LOG" 2>&1
   echo "[$TIMESTAMP] cloned apps v3 branch" >> "$LOG"
