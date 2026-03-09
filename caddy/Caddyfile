@@ -20,7 +20,11 @@ file.marinesensitivity.org {
   import cors
 
   # raw pmtiles for client-side PMTiles protocol (add_pmtiles_source)
-  handle_path /pmtiles/* {
+  handle_path /pmtiles/v4/* {
+    root * /share/data/derived/v4/pmtiles
+    file_server browse
+  }
+  handle_path /pmtiles/v3/* {
     root * /share/data/derived/v3/pmtiles
     file_server browse
   }
@@ -84,7 +88,8 @@ pmtiles.marinesensitivity.org {
   # server-side tile decoding: ZXY + TileJSON (for QGIS, leaflet, etc.)
   handle_path /tiles/* {
     pmtiles_proxy {
-      bucket file:///share/data/derived/v3/pmtiles
+      bucket file:///share/data/derived/v4/pmtiles
+      # note: v3 pmtiles also available at /share/data/derived/v3/pmtiles
       cache_size 256
       public_url https://pmtiles.marinesensitivity.org/tiles
     }

@@ -24,16 +24,22 @@ rclone copy \
   --log-level INFO \
   2>> "$LOG"
 
-# --- push shiny app logs ---
-echo "[$TIMESTAMP] pushing shiny logs..." >> "$LOG"
-rclone copy \
-  "/var/log/shiny-server" \
-  "${REMOTE}:${REMOTE_LOGS}/shiny" \
-  --include "*.log" \
-  --transfers 2 \
-  --log-file "$LOG" \
-  --log-level INFO \
-  2>> "$LOG"
+# --- push shiny app logs (if directory exists) ---
+# note: shiny container may log to stderr (captured via podman logs below)
+#       rather than to /var/log/shiny-server on the host
+if [ -d "/var/log/shiny-server" ]; then
+  echo "[$TIMESTAMP] pushing shiny logs..." >> "$LOG"
+  rclone copy \
+    "/var/log/shiny-server" \
+    "${REMOTE}:${REMOTE_LOGS}/shiny" \
+    --include "*.log" \
+    --transfers 2 \
+    --log-file "$LOG" \
+    --log-level INFO \
+    2>> "$LOG"
+else
+  echo "[$TIMESTAMP] skipping shiny logs (no /var/log/shiny-server)" >> "$LOG"
+fi
 
 # --- push container logs ---
 echo "[$TIMESTAMP] exporting podman logs..." >> "$LOG"

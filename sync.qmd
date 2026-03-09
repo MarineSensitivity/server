@@ -494,8 +494,8 @@ The following files must be present on the internal server for the Shiny apps to
 | File / path | Source | Notes |
 |---|---|---|
 | `/share/private/mapbox_token_bdbest.txt` | manual copy | Mapbox API token — **not** in git or rclone sync |
-| `/share/data/big/{version}/sdm.duckdb` | `rclone` sync | Species distribution model database (~5 GB); currently `v3` |
-| `/share/data/derived/{version}/*.gpkg, *.csv, *.tif` | `rclone` sync | Derived spatial datasets; currently `v3` |
+| `/share/data/big/{version}/sdm.duckdb` | `rclone` sync | Species distribution model database (~5 GB); currently `v4` |
+| `/share/data/derived/{version}/*.gpkg, *.csv, *.tif` | `rclone` sync | Derived spatial datasets; currently `v4` |
 | `apps/mapgl/data/taxonomic_hierarchy_worms_*.csv` | `git pull` | Taxonomy lookup tables (bundled in apps repo) |
 
 ::: {.callout-important}
@@ -701,7 +701,7 @@ The MST data footprint should be estimated for disk provisioning on the internal
 ::: {.callout-warning}
 ### Root partition reached 100% during initial sync
 
-The BOEM server's root partition (`/`) is only **17 GB**. During the first `rclone` sync, the disk filled completely, causing sync failures and preventing new container pulls. The `sync-pull.sh` script syncs only the version specified by the `DATA_VERSION` variable (currently `v3`), excluding older dataset versions.
+The BOEM server's root partition (`/`) is only **17 GB**. During the first `rclone` sync, the disk filled completely, causing sync failures and preventing new container pulls. The `sync-pull.sh` script syncs only the version specified by the `DATA_VERSION` variable (currently `v4`), excluding older dataset versions.
 :::
 
 **Action**: Partially resolved — sync scripts use the `DATA_VERSION` variable in `prod/sync-pull.sh` (currently set to `v3`). To sync a new version, update that variable. Recommend provisioning a dedicated `/share` volume with **50+ GB** capacity separate from the root partition.

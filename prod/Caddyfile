@@ -26,7 +26,12 @@
 	}
 
 	# pmtiles: raw file serving for client-side PMTiles protocol
-	handle_path /pmtiles/* {
+	handle_path /pmtiles/v4/* {
+		import cors
+		root * /share/data/derived/v4/pmtiles
+		file_server browse
+	}
+	handle_path /pmtiles/v3/* {
 		import cors
 		root * /share/data/derived/v3/pmtiles
 		file_server browse

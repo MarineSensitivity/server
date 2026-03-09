@@ -15,7 +15,7 @@ REMOTE_WWW="/share/public/www"          # static website on external server
 LOCAL_DATA="/share/data"                # local data directory
 LOCAL_BIG="/share/data/big"             # local big data directory
 LOCAL_WWW="/share/public/www"           # local static website directory
-DATA_VERSION="v3"                      # dataset version to sync (change to v4 when ready)
+DATA_VERSION="v4"                      # dataset version to sync
 
 # github repos (app source pulled via git, not rclone)
 GH_APPS="/share/github/MarineSensitivity/apps"
@@ -64,6 +64,7 @@ rclone sync \
   2>> "$LOG"
 
 # --- static website (docs, homepage) via rclone sftp ---
+# note: source may not exist yet on dev server; skip gracefully
 echo "[$TIMESTAMP] pulling static website..." >> "$LOG"
 rclone sync \
   "${REMOTE}:${REMOTE_WWW}" \
@@ -72,7 +73,7 @@ rclone sync \
   --checkers 16 \
   --log-file "$LOG" \
   --log-level INFO \
-  2>> "$LOG"
+  2>> "$LOG" || echo "[$TIMESTAMP] WARNING: static website sync failed (source may not exist)" >> "$LOG"
 
 # --- shiny app source code via git pull from GitHub ---
 echo "[$TIMESTAMP] pulling app code from GitHub..." >> "$LOG"
@@ -94,9 +95,26 @@ if [ -d "$GH_SERVER/.git" ]; then
   git checkout main >> "$LOG" 2>&1
   git pull origin main >> "$LOG" 2>&1
   echo "[$TIMESTAMP] server repo updated" >> "$LOG"
+
+  # reload caddy to pick up any Caddyfile changes
+  sudo podman exec caddy caddy reload --config /etc/caddy/Caddyfile >> "$LOG" 2>&1 || true
+  echo "[$TIMESTAMP] caddy reloaded" >> "$LOG"
 else
   echo "[$TIMESTAMP] WARNING: $GH_SERVER is not a git repo, skipping" >> "$LOG"
 fi
+
+# --- v3 apps (legacy) ---
+echo "[$TIMESTAMP] setting up v3 legacy apps..." >> "$LOG"
+GH_APPS_V3="/share/github/MarineSensitivity/apps_v3"
+if [ ! -d "$GH_APPS_V3/.git" ]; then
+  git clone --branch v3 --single-branch \
+    https://github.com/MarineSensitivity/apps.git "$GH_APPS_V3" >> "$LOG" 2>&1
+  echo "[$TIMESTAMP] cloned apps v3 branch" >> "$LOG"
+fi
+# symlinks for shiny-server (idempotent)
+ln -sfn "$GH_APPS_V3/mapgl" "$GH_APPS/mapgl_v3"
+ln -sfn "$GH_APPS_V3/mapsp" "$GH_APPS/mapsp_v3"
+echo "[$TIMESTAMP] v3 symlinks ready" >> "$LOG"
 
 TIMESTAMP_END=$(date '+%Y-%m-%d %H:%M:%S')
 echo "[$TIMESTAMP_END] === sync-pull completed ===" >> "$LOG"
