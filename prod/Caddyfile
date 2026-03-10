@@ -5,7 +5,7 @@
 (cors) {
 	@origin header Origin *
 	header @origin {
-		Access-Control-Allow-Origin  "*"
+		Access-Control-Allow-Origin "*"
 		Access-Control-Request-Method GET
 	}
 }
