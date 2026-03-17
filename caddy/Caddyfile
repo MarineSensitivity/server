@@ -19,6 +19,12 @@ file.marinesensitivity.org {
 	import cors
 
 	# raw pmtiles for client-side PMTiles protocol (add_pmtiles_source)
+	handle_path /pmtiles/* {
+		root * /share/data/derived/pmtiles
+		file_server browse
+	}
+
+	# legacy versioned pmtiles routes (backwards compat for old apps)
 	handle_path /pmtiles/v4/* {
 		root * /share/data/derived/v4/pmtiles
 		file_server browse
