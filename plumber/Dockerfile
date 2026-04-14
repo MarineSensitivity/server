@@ -25,14 +25,18 @@ RUN install2.r --error \
  RPostgres plotly readr scales shiny stringr terra tibble tidyr yaml \
  && rm -rf /tmp/downloaded_packages
 
-# install msens from GitHub (provides cells_in_polygon, scores_for_cells,
-# species_for_cells, plot_flower, tbl_species, ggmap_areas used by report.qmd)
-RUN installGithub.r \
- MarineSensitivity/msens \
- && rm -rf /tmp/downloaded_packages/
-
 # TinyTeX for PDF rendering of /report (idempotent if already installed)
+# Kept above the msens layer so bumping msens doesn't re-run the slow
+# TinyTeX install.
 RUN R -e 'if (!nzchar(Sys.which("lualatex"))) tinytex::install_tinytex()'
+
+# install msens from GitHub (provides cells_in_polygon, scores_for_cells,
+# species_for_cells, plot_flower, tbl_species, ggmap_areas used by report.qmd).
+# The post-install `library(msens)` check fails the build loudly if the
+# install silently fails — otherwise a bad layer gets cached as successful
+# and the running container silently has no msens.
+RUN R -e 'remotes::install_github("MarineSensitivity/msens", upgrade = FALSE); library(msens)' \
+ && rm -rf /tmp/downloaded_packages/
 
 EXPOSE 8000
 
