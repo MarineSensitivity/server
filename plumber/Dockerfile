@@ -22,6 +22,7 @@ RUN curl -L https://quarto.org/download/latest/quarto-linux-amd64.deb \
 RUN install2.r --error \
  dbplyr dplyr digest DT fs ggiraph ggplot2 glue gt here httr2 jsonlite \
  librarian markdown plumber pool purrr quarto rmarkdown rnaturalearth \
+ rnaturalearthdata \
  RPostgres plotly readr scales shiny stringr terra tibble tidyr yaml \
  && rm -rf /tmp/downloaded_packages
 
