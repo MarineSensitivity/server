@@ -34,6 +34,13 @@ file.marinesensitivity.org {
 		file_server browse
 	}
 
+	# force reports to download (especially HTML which otherwise renders inline)
+	handle_path /reports/* {
+		root * /share/public/reports
+		header Content-Disposition "attachment"
+		file_server
+	}
+
 	handle {
 		root * /share/public
 		file_server browse {
