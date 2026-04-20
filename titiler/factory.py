@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
+import math
 import os
 import threading
 from dataclasses import dataclass, field
@@ -44,6 +45,15 @@ _FORBIDDEN_FN_PREFIXES = ("read_", "write_", "httpfs", "load_", "install_")
 
 class SqlValidationError(ValueError):
   """raised when user-supplied SQL fails validation."""
+
+
+def _json_safe(v):
+  """replace inf / -inf / nan with descriptive strings so fastapi can serialize."""
+  if isinstance(v, float):
+    if math.isnan(v): return "NaN"
+    if math.isposinf(v): return "Infinity"
+    if math.isneginf(v): return "-Infinity"
+  return v
 
 
 # ---- sql handling -----------------------------------------------------------
@@ -255,18 +265,20 @@ class MsensCellsFactory:
           "path":           COG_PATH,
           "rio_tiler":      rio_tiler.__version__,
           "rasterio":       rasterio.__version__,
-          "bounds_native":  list(ds.bounds),
+          "bounds_native":  [_json_safe(v) for v in ds.bounds],
+          "transform":      [_json_safe(v) for v in ds.transform],
           "crs":            str(ds.crs),
+          "crs_wkt":        ds.crs.to_wkt() if ds.crs else None,
           "width":          ds.width,
           "height":         ds.height,
           "count":          ds.count,
           "dtypes":         [str(dt) for dt in ds.dtypes],
-          "nodata_values":  list(ds.nodatavals),
+          "nodata_values":  [_json_safe(v) for v in ds.nodatavals],
           "overviews":      ds.overviews(1) if ds.count >= 1 else [],
         }
         try:
-          out["bounds_geographic"] = list(
-            transform_bounds(ds.crs, "EPSG:4326", *ds.bounds, densify_pts=21))
+          bb = transform_bounds(ds.crs, "EPSG:4326", *ds.bounds, densify_pts=21)
+          out["bounds_geographic"] = [_json_safe(v) for v in bb]
         except Exception as e:
           out["bounds_geographic_err"] = repr(e)
         try:
