@@ -168,6 +168,7 @@ def _render_tile(
     with Reader(COG_PATH) as src:
       img = src.tile(x, y, z, tilesize=256, resampling_method="nearest")
   except TileOutsideBounds:
+    log.info("tile %d/%d/%d outside cog bounds → empty png", z, x, y)
     return _empty_tile_png()
 
   # img.data shape (bands, 256, 256); band 0 holds integer cell ids
@@ -179,6 +180,16 @@ def _render_tile(
   out = np.full(flat.shape, np.nan, dtype=np.float64)
   out[in_range] = vmap[flat[in_range]]
   values = out.reshape(cellid.shape)
+
+  log.info(
+    "tile %d/%d/%d: cellid[min=%d max=%d], cog_mask valid=%d, "
+    "in_range=%d, vmap len=%d, values finite=%d",
+    z, x, y,
+    int(cellid.min()), int(cellid.max()),
+    int((cog_mask > 0).sum()),
+    int(in_range.sum()),
+    len(vmap),
+    int(np.isfinite(values).sum()))
 
   rmin, rmax = rescale
   if rmax <= rmin:
@@ -194,6 +205,13 @@ def _render_tile(
   rgb        = rgba[:3]
   valid_2d   = ((cog_mask > 0) & np.isfinite(values)).astype(np.uint8) * 255
   final_mask = np.bitwise_and(alpha_from_cmap, valid_2d)
+
+  log.info(
+    "tile %d/%d/%d: alpha_cmap nz=%d, valid_2d nz=%d, final_mask nz=%d",
+    z, x, y,
+    int((alpha_from_cmap > 0).sum()),
+    int((valid_2d > 0).sum()),
+    int((final_mask > 0).sum()))
 
   return utils_render(rgb, mask=final_mask, img_format="PNG")
 
@@ -216,6 +234,54 @@ class MsensCellsFactory:
       """geographic bounds of the cell-id cog."""
       with Reader(COG_PATH) as src:
         return {"bounds": list(src.get_geographic_bounds(WGS84_CRS)), "crs": "EPSG:4326"}
+
+    @router.get("/debug/cog")
+    def debug_cog():
+      """inspect the underlying cell-id COG (nodata, zoom range, dtype, bounds)."""
+      with Reader(COG_PATH) as src:
+        info = src.info()
+        ds   = src.dataset
+        return {
+          "path":         COG_PATH,
+          "bounds_geographic": list(src.get_geographic_bounds(WGS84_CRS)),
+          "bounds_native":     list(ds.bounds),
+          "crs":         str(ds.crs),
+          "width":       ds.width,
+          "height":      ds.height,
+          "count":       ds.count,
+          "dtypes":      [str(dt) for dt in ds.dtypes],
+          "nodata_values": list(ds.nodatavals),
+          "minzoom":     info.minzoom,
+          "maxzoom":     info.maxzoom,
+          "overviews":   ds.overviews(1) if ds.count >= 1 else [],
+        }
+
+    @router.get("/debug/tile/{z}/{x}/{y}")
+    def debug_tile(z: int, x: int, y: int):
+      """read a tile and report what rio-tiler actually returns."""
+      try:
+        with Reader(COG_PATH) as src:
+          img = src.tile(x, y, z, tilesize=256, resampling_method="nearest")
+      except TileOutsideBounds:
+        return {"status": "outside_bounds"}
+      cellid = img.data[0].astype(np.int64)
+      m      = img.mask
+      uniq, counts = np.unique(cellid, return_counts=True)
+      top = sorted(zip(uniq.tolist(), counts.tolist()), key=lambda kv: -kv[1])[:10]
+      return {
+        "status":         "ok",
+        "dtype":          str(img.data.dtype),
+        "data_shape":     list(img.data.shape),
+        "mask_valid_px":  int((m > 0).sum()),
+        "mask_total_px":  int(m.size),
+        "cellid_min":     int(cellid.min()),
+        "cellid_max":     int(cellid.max()),
+        "cellid_zero_px": int((cellid == 0).sum()),
+        "cellid_neg_px":  int((cellid < 0).sum()),
+        "top10_cellid_by_count": top,
+        "bounds":         list(img.bounds),
+        "crs":            str(img.crs),
+      }
 
     @router.get("/statistics")
     def statistics(
