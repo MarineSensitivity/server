@@ -51,8 +51,7 @@ def _json_safe(v):
   """replace inf / -inf / nan with descriptive strings so fastapi can serialize."""
   if isinstance(v, float):
     if math.isnan(v): return "NaN"
-    if math.isposinf(v): return "Infinity"
-    if math.isneginf(v): return "-Infinity"
+    if math.isinf(v): return "Infinity" if v > 0 else "-Infinity"
   return v
 
 
