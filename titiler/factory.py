@@ -179,12 +179,61 @@ def _get_colormap(name: str):
     raise HTTPException(status_code=400, detail=f"unknown colormap '{name}': {e}") from e
 
 
+def _parse_hex_color(s: str) -> tuple[int, int, int, int]:
+  """accept '#rrggbb', 'rrggbb', '#rrggbbaa', or 'rrggbbaa'."""
+  raw = s.lstrip("#").lower()
+  try:
+    if len(raw) == 6:
+      return (int(raw[0:2], 16), int(raw[2:4], 16), int(raw[4:6], 16), 255)
+    if len(raw) == 8:
+      return (int(raw[0:2], 16), int(raw[2:4], 16),
+              int(raw[4:6], 16), int(raw[6:8], 16))
+  except ValueError:
+    pass
+  raise HTTPException(status_code=400,
+                      detail=f"color must be #rrggbb or #rrggbbaa hex; got '{s}'")
+
+
 def _empty_tile_png() -> bytes:
   # rio_tiler.utils.render(data=(bands,H,W), mask=(H,W)) appends mask as the
   # alpha channel → use 3-band rgb so output is a 4-band RGBA PNG.
   rgb  = np.zeros((3, 256, 256), dtype=np.uint8)
   mask = np.zeros((256, 256),    dtype=np.uint8)
   return utils_render(rgb, mask=mask, img_format="PNG")
+
+
+def _render_mask_tile(
+    z: int, x: int, y: int, vmap: np.ndarray, color: str) -> bytes:
+  """single-color mask: every valid pixel in the tile rendered as `color`.
+
+  Value magnitude is ignored — only cell_id presence/validity is used to
+  decide visibility. Matches the old msens::add_cells(r_outside_pra, ...)
+  pattern where the raster was a binary 1/NA mask rendered at uniform gray.
+  """
+  r_, g_, b_, a_ = _parse_hex_color(color)
+  try:
+    with Reader(COG_PATH) as src:
+      img = src.tile(x, y, z, tilesize=256, resampling_method="nearest")
+  except TileOutsideBounds:
+    return _empty_tile_png()
+
+  cellid   = img.data[0].astype(np.int64)
+  cog_mask = img.mask
+
+  flat = cellid.ravel()
+  in_range = (flat > 0) & (flat < len(vmap))
+  valid = np.zeros_like(flat, dtype=bool)
+  valid[in_range] = np.isfinite(vmap[flat[in_range]])
+  valid_2d = valid.reshape(cellid.shape)
+
+  rgb = np.empty((3, 256, 256), dtype=np.uint8)
+  rgb[0].fill(r_)
+  rgb[1].fill(g_)
+  rgb[2].fill(b_)
+
+  # alpha = min(color_alpha, visible-pixel-alpha)
+  final_mask = (((cog_mask > 0) & valid_2d).astype(np.uint16) * a_).astype(np.uint8)
+  return utils_render(rgb, mask=final_mask, img_format="PNG")
 
 
 def _render_tile(
@@ -356,6 +405,8 @@ class MsensCellsFactory:
       params = {"sql": sql, "colormap": colormap}
       if rescale: params["rescale"] = rescale
       if mtime:   params["mtime"]   = mtime
+      # `color` is not in the tilejson arg list (add it manually if the
+      # caller composes single-color mask URLs directly via cell_tile_url)
       qs = urlencode(params)
       base = str(request.base_url).rstrip("/")
       return {
@@ -374,18 +425,25 @@ class MsensCellsFactory:
         sql:      str = Query(...),
         colormap: str = Query("spectral_r"),
         rescale:  Optional[str] = Query(None),
+        color:    Optional[str] = Query(
+          None,
+          description="hex #rrggbb[aa]; if set, render all valid pixels in this color "
+                      "(single-color mask) and ignore colormap/rescale"),
         mtime:    Optional[str] = Query(None)):  # noqa: ARG001  (mtime is a cache key, consumed by varnish)
       canonical = _decode_and_validate(sql)
       vmap = _load_value_map(canonical)
 
-      r = _parse_rescale(rescale)
-      if r is None:
-        finite = vmap[np.isfinite(vmap)]
-        if len(finite) == 0:
-          raise HTTPException(status_code=404, detail="empty value map")
-        r = (float(finite.min()), float(finite.max()))
+      if color is not None:
+        png = _render_mask_tile(z, x, y, vmap, color)
+      else:
+        r = _parse_rescale(rescale)
+        if r is None:
+          finite = vmap[np.isfinite(vmap)]
+          if len(finite) == 0:
+            raise HTTPException(status_code=404, detail="empty value map")
+          r = (float(finite.min()), float(finite.max()))
+        png = _render_tile(z, x, y, vmap, colormap, r)
 
-      png = _render_tile(z, x, y, vmap, colormap, r)
       return Response(
         png,
         media_type="image/png",
