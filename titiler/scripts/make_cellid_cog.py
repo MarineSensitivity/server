@@ -27,12 +27,10 @@ from __future__ import annotations
 
 import argparse
 import sys
-import tempfile
 from pathlib import Path
 
 import numpy as np
 import rasterio
-from rasterio.shutil import copy as rio_copy
 from rasterio.transform import from_origin
 
 
@@ -88,7 +86,10 @@ def main(src_path: str, dst_path: str) -> None:
   out[:, :west_end] = west[:, :west_end]
   print(f"  west placed at cols [0, {west_end}]")
 
-  # 4) write a tiled GTiff, then copy as COG
+  # 4) write a tiled GTiff directly — for local-disk reads, an internally-
+  #    tiled GTiff is functionally equivalent to a COG. We don't want
+  #    overviews (they'd interpolate integer cell ids into nonsense) and
+  #    we don't need HTTP-range-read-friendly layout.
   out_transform = from_origin(-180.0, top, pix_x, pix_y)
   profile = {
     "driver":      "GTiff",
@@ -99,33 +100,20 @@ def main(src_path: str, dst_path: str) -> None:
     "crs":         "EPSG:4326",
     "transform":   out_transform,
     "nodata":      0,
-    "compress":    "LZW",
+    "compress":    "DEFLATE",
+    "predictor":   2,              # horizontal differencing, best for integer rasters
     "tiled":       True,
     "blockxsize":  512,
     "blockysize":  512,
+    "BIGTIFF":     "IF_SAFER",
   }
 
   dst_path_p = Path(dst_path)
   dst_path_p.parent.mkdir(parents=True, exist_ok=True)
 
-  with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tf:
-    tmp_path = tf.name
-  try:
-    print(f"== writing staged GTiff → {tmp_path}")
-    with rasterio.open(tmp_path, "w", **profile) as dst:
-      dst.write(out, 1)
-
-    print(f"== copying as COG → {dst_path}")
-    rio_copy(
-      tmp_path, dst_path,
-      driver="COG",
-      compress="LZW",
-      blocksize=512,
-      overview_count=0,
-      bigtiff="IF_SAFER",
-    )
-  finally:
-    Path(tmp_path).unlink(missing_ok=True)
+  print(f"== writing tiled GTiff → {dst_path}")
+  with rasterio.open(dst_path, "w", **profile) as dst:
+    dst.write(out, 1)
 
   # summary
   with rasterio.open(dst_path) as chk:
