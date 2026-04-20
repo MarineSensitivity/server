@@ -16,11 +16,12 @@ import numpy as np
 import sqlglot
 import sqlglot.expressions as exp
 from fastapi import APIRouter, HTTPException, Query, Request
+from rio_tiler.colormap import apply_cmap
 from rio_tiler.colormap import cmap as default_cmap
 from rio_tiler.constants import WGS84_CRS
 from rio_tiler.errors import TileOutsideBounds
 from rio_tiler.io import Reader
-from rio_tiler.models import ImageData
+from rio_tiler.utils import render as utils_render
 from starlette.responses import Response
 
 log = logging.getLogger("msens.factory")
@@ -152,9 +153,9 @@ def _get_colormap(name: str):
 
 
 def _empty_tile_png() -> bytes:
-  data = np.zeros((1, 256, 256), dtype=np.uint8)
-  marr = np.ma.MaskedArray(data, mask=np.ones_like(data, dtype=bool))
-  return ImageData(marr).render(img_format="PNG")
+  rgba = np.zeros((4, 256, 256), dtype=np.uint8)
+  mask = np.zeros((256, 256), dtype=np.uint8)
+  return utils_render(rgba, mask=mask, img_format="PNG")
 
 
 def _render_tile(
@@ -183,14 +184,15 @@ def _render_tile(
   scaled    = np.clip((values - rmin) / (rmax - rmin), 0.0, 1.0) * 255.0
   scaled_u8 = np.nan_to_num(scaled, nan=0).astype(np.uint8)
 
-  # MaskedArray: True means masked/invalid (transparent)
-  invalid_2d = ~((cog_mask > 0) & np.isfinite(values))
-  data_3d    = scaled_u8[np.newaxis, ...]
-  mask_3d    = invalid_2d[np.newaxis, ...]
-  marr = np.ma.MaskedArray(data_3d, mask=mask_3d)
+  # apply colormap explicitly: (1,H,W) uint8 → (4,H,W) RGBA uint8 + (H,W) alpha
+  data_3d = scaled_u8[np.newaxis, ...]
+  rgba, alpha_from_cmap = apply_cmap(data_3d, _get_colormap(colormap_name))
 
-  out_img = ImageData(marr, bounds=img.bounds, crs=img.crs)
-  return out_img.render(img_format="PNG", colormap=_get_colormap(colormap_name))
+  # combine cog validity + value finiteness + colormap alpha
+  valid_2d     = ((cog_mask > 0) & np.isfinite(values)).astype(np.uint8) * 255
+  final_mask   = np.bitwise_and(alpha_from_cmap, valid_2d)
+
+  return utils_render(rgba, mask=final_mask, img_format="PNG")
 
 
 # ---- factory ----------------------------------------------------------------
@@ -213,7 +215,9 @@ class MsensCellsFactory:
         return {"bounds": list(src.get_geographic_bounds(WGS84_CRS)), "crs": "EPSG:4326"}
 
     @router.get("/statistics")
-    def statistics(sql: str = Query(..., description="base64url-encoded SELECT cell_id, value ...")):
+    def statistics(
+        sql:   str = Query(..., description="base64url-encoded SELECT cell_id, value ..."),
+        mtime: Optional[str] = Query(None, description="optional cache-bust tag — DuckDB mtime")):  # noqa: ARG001
       """min/max/percentiles of the sql result — used by clients to set rescale."""
       canonical = _decode_and_validate(sql)
       vmap = _load_value_map(canonical)
@@ -235,7 +239,7 @@ class MsensCellsFactory:
         sql:      str = Query(..., description="base64url-encoded SELECT cell_id, value ..."),
         colormap: str = Query("spectral_r"),
         rescale:  Optional[str] = Query(None, description="'min,max'"),
-        v:        Optional[str] = Query(None, description="optional cache-bust tag"),
+        mtime:    Optional[str] = Query(None, description="optional cache-bust tag — DuckDB mtime"),
         minzoom:  int = Query(0),
         maxzoom:  int = Query(12)):
       """tilejson document pointing at the /tiles endpoint."""
@@ -246,7 +250,7 @@ class MsensCellsFactory:
 
       params = {"sql": sql, "colormap": colormap}
       if rescale: params["rescale"] = rescale
-      if v:       params["v"] = v
+      if mtime:   params["mtime"]   = mtime
       qs = urlencode(params)
       base = str(request.base_url).rstrip("/")
       return {
@@ -265,7 +269,7 @@ class MsensCellsFactory:
         sql:      str = Query(...),
         colormap: str = Query("spectral_r"),
         rescale:  Optional[str] = Query(None),
-        v:        Optional[str] = Query(None)):  # noqa: ARG001  (v is a cache key, consumed by varnish)
+        mtime:    Optional[str] = Query(None)):  # noqa: ARG001  (mtime is a cache key, consumed by varnish)
       canonical = _decode_and_validate(sql)
       vmap = _load_value_map(canonical)
 
