@@ -16,9 +16,11 @@ import numpy as np
 import sqlglot
 import sqlglot.expressions as exp
 from fastapi import APIRouter, HTTPException, Query, Request
+import rasterio
+import rio_tiler
+from rasterio.warp import transform_bounds
 from rio_tiler.colormap import apply_cmap
 from rio_tiler.colormap import cmap as default_cmap
-from rio_tiler.constants import WGS84_CRS
 from rio_tiler.errors import TileOutsideBounds
 from rio_tiler.io import Reader
 from rio_tiler.utils import render as utils_render
@@ -131,6 +133,16 @@ def _load_value_map(canonical_sql: str) -> np.ndarray:
   return vmap
 
 
+# ---- cog metadata (cached once) ---------------------------------------------
+
+@lru_cache(maxsize=1)
+def _cog_geographic_bounds() -> tuple[float, float, float, float]:
+  """EPSG:4326 bounding box of the cell-id COG."""
+  with Reader(COG_PATH) as src:
+    ds = src.dataset
+    return tuple(transform_bounds(ds.crs, "EPSG:4326", *ds.bounds, densify_pts=21))
+
+
 # ---- tile rendering ---------------------------------------------------------
 
 def _parse_rescale(s: Optional[str]) -> Optional[tuple[float, float]]:
@@ -231,30 +243,38 @@ class MsensCellsFactory:
 
     @router.get("/bounds")
     def bounds():
-      """geographic bounds of the cell-id cog."""
-      with Reader(COG_PATH) as src:
-        return {"bounds": list(src.get_geographic_bounds(WGS84_CRS)), "crs": "EPSG:4326"}
+      """geographic (EPSG:4326) bounds of the cell-id cog."""
+      return {"bounds": list(_cog_geographic_bounds()), "crs": "EPSG:4326"}
 
     @router.get("/debug/cog")
     def debug_cog():
       """inspect the underlying cell-id COG (nodata, zoom range, dtype, bounds)."""
       with Reader(COG_PATH) as src:
-        info = src.info()
-        ds   = src.dataset
-        return {
-          "path":         COG_PATH,
-          "bounds_geographic": list(src.get_geographic_bounds(WGS84_CRS)),
-          "bounds_native":     list(ds.bounds),
-          "crs":         str(ds.crs),
-          "width":       ds.width,
-          "height":      ds.height,
-          "count":       ds.count,
-          "dtypes":      [str(dt) for dt in ds.dtypes],
-          "nodata_values": list(ds.nodatavals),
-          "minzoom":     info.minzoom,
-          "maxzoom":     info.maxzoom,
-          "overviews":   ds.overviews(1) if ds.count >= 1 else [],
+        ds = src.dataset
+        out = {
+          "path":           COG_PATH,
+          "rio_tiler":      rio_tiler.__version__,
+          "rasterio":       rasterio.__version__,
+          "bounds_native":  list(ds.bounds),
+          "crs":            str(ds.crs),
+          "width":          ds.width,
+          "height":         ds.height,
+          "count":          ds.count,
+          "dtypes":         [str(dt) for dt in ds.dtypes],
+          "nodata_values":  list(ds.nodatavals),
+          "overviews":      ds.overviews(1) if ds.count >= 1 else [],
         }
+        try:
+          out["bounds_geographic"] = list(
+            transform_bounds(ds.crs, "EPSG:4326", *ds.bounds, densify_pts=21))
+        except Exception as e:
+          out["bounds_geographic_err"] = repr(e)
+        try:
+          out["minzoom"] = src.minzoom
+          out["maxzoom"] = src.maxzoom
+        except Exception as e:
+          out["zoom_err"] = repr(e)
+        return out
 
     @router.get("/debug/tile/{z}/{x}/{y}")
     def debug_tile(z: int, x: int, y: int):
@@ -314,8 +334,7 @@ class MsensCellsFactory:
       """tilejson document pointing at the /tiles endpoint."""
       # validate early
       _decode_and_validate(sql)
-      with Reader(COG_PATH) as src:
-        bb = list(src.get_geographic_bounds(WGS84_CRS))
+      bb = list(_cog_geographic_bounds())
 
       params = {"sql": sql, "colormap": colormap}
       if rescale: params["rescale"] = rescale
