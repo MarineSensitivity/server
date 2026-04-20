@@ -153,9 +153,11 @@ def _get_colormap(name: str):
 
 
 def _empty_tile_png() -> bytes:
-  rgba = np.zeros((4, 256, 256), dtype=np.uint8)
-  mask = np.zeros((256, 256), dtype=np.uint8)
-  return utils_render(rgba, mask=mask, img_format="PNG")
+  # rio_tiler.utils.render(data=(bands,H,W), mask=(H,W)) appends mask as the
+  # alpha channel → use 3-band rgb so output is a 4-band RGBA PNG.
+  rgb  = np.zeros((3, 256, 256), dtype=np.uint8)
+  mask = np.zeros((256, 256),    dtype=np.uint8)
+  return utils_render(rgb, mask=mask, img_format="PNG")
 
 
 def _render_tile(
@@ -188,11 +190,12 @@ def _render_tile(
   data_3d = scaled_u8[np.newaxis, ...]
   rgba, alpha_from_cmap = apply_cmap(data_3d, _get_colormap(colormap_name))
 
-  # combine cog validity + value finiteness + colormap alpha
-  valid_2d     = ((cog_mask > 0) & np.isfinite(values)).astype(np.uint8) * 255
-  final_mask   = np.bitwise_and(alpha_from_cmap, valid_2d)
+  # pass RGB only; mask kwarg becomes the alpha channel in render output
+  rgb        = rgba[:3]
+  valid_2d   = ((cog_mask > 0) & np.isfinite(values)).astype(np.uint8) * 255
+  final_mask = np.bitwise_and(alpha_from_cmap, valid_2d)
 
-  return utils_render(rgba, mask=final_mask, img_format="PNG")
+  return utils_render(rgb, mask=final_mask, img_format="PNG")
 
 
 # ---- factory ----------------------------------------------------------------

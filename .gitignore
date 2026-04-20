@@ -6,3 +6,5 @@
 .env
 README.html
 .env.swp
+__pycache__/
+*.pyc
