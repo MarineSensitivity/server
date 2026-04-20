@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import threading
+import warnings
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Optional
@@ -22,10 +23,15 @@ import rio_tiler
 from rasterio.warp import transform_bounds
 from rio_tiler.colormap import apply_cmap
 from rio_tiler.colormap import cmap as default_cmap
-from rio_tiler.errors import TileOutsideBounds
+from rio_tiler.errors import NoOverviewWarning, TileOutsideBounds
 from rio_tiler.io import Reader
 from rio_tiler.utils import render as utils_render
 from starlette.responses import Response
+
+# we intentionally ship the cell-id COG without overviews (nearest-resampled
+# integer cell ids can't be averaged into pyramids without corruption), so the
+# perf warning is noise
+warnings.filterwarnings("ignore", category=NoOverviewWarning)
 
 log = logging.getLogger("msens.factory")
 
