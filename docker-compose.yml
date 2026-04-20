@@ -165,7 +165,7 @@ services:
       MSENS_MAX_ROWS:   "1000000"
       MSENS_LRU_SIZE:   "128"
     volumes:
-      - /share:/share:ro
+      - /share:/share
     ports:
       - "8000:8000"
     restart: always
