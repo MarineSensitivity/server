@@ -160,7 +160,7 @@ services:
     environment:
       PORT:              8000
       # WORKERS_PER_CORE: 1
-      MSENS_CELLID_COG: /share/data/derived/r_bio-oracle_planarea.tif
+      MSENS_CELLID_COG: /share/data/derived/r_cellid.tif
       MSENS_DUCKDB:     /share/data/big/latest/sdm.duckdb
       MSENS_MAX_ROWS:   "1000000"
       MSENS_LRU_SIZE:   "128"

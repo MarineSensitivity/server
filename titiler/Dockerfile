@@ -7,9 +7,10 @@ RUN pip install --no-cache-dir -r /tmp/msens-requirements.txt
 # factory source
 WORKDIR /opt/msens
 COPY app.py factory.py ./
+COPY scripts ./scripts
 
 # default paths — overridable via docker-compose env
-ENV MSENS_CELLID_COG=/share/data/derived/r_bio-oracle_planarea.tif \
+ENV MSENS_CELLID_COG=/share/data/derived/r_cellid.tif \
     MSENS_DUCKDB=/share/data/big/latest/sdm.duckdb \
     MSENS_MAX_ROWS=1000000 \
     MSENS_LRU_SIZE=128 \
