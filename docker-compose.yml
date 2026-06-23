@@ -187,3 +187,35 @@ services:
     restart: always
     depends_on:
       - "titiler"
+
+  # h3t: OBIS biodiversity-by-hex tile factory (DuckDB SELECT -> h3j JSON tiles)
+  h3t:
+    container_name: h3t
+    build: ./h3t
+    environment:
+      H3T_DBS:             "obis:/share/data/obis/obis_h3.duckdb"
+      H3T_DEFAULT_DB:      obis
+      H3T_MAX_ROWS:        "50000"
+      H3T_STMT_TIMEOUT_MS: "3000"
+    volumes:
+      - /share:/share
+    ports:
+      - "8889:8889"
+    restart: always
+
+  h3tcache:
+    container_name: h3tcache
+    image: varnish:latest # 7.4.2  # last updated: 2023-12-26
+    volumes:
+      - /share:/share
+      - "./varnish/h3t.vcl:/etc/varnish/default.vcl:ro"
+    ports:
+      - 6083:6083
+    environment:
+      VARNISH_BACKEND_HOST: h3t # .marinesensitivity.org
+      VARNISH_BACKEND_PORT: 8889
+      VARNISH_HTTP_PORT:    6083
+    command: "-p default_keep=604800" # 7d, matches vcl TTL
+    restart: always
+    depends_on:
+      - "h3t"

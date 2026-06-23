@@ -93,6 +93,14 @@ titilecache.marinesensitivity.org {
 	reverse_proxy titilecache:6082
 }
 
+h3t.marinesensitivity.org {
+	reverse_proxy h3t:8889
+}
+
+h3tcache.marinesensitivity.org {
+	reverse_proxy h3tcache:6083
+}
+
 pmtiles.marinesensitivity.org {
 	import cors
 
