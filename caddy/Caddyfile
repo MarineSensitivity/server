@@ -34,6 +34,18 @@ file.marinesensitivity.org {
 		file_server browse
 	}
 
+	# stac catalog (sdm extension) — static JSON tree
+	handle_path /stac/* {
+		root * /share/data/derived/stac
+		file_server browse
+	}
+
+	# versioned derived data (geoparquet, cogs, gpkg) referenced by stac assets
+	handle_path /derived/* {
+		root * /share/data/derived
+		file_server browse
+	}
+
 	# force reports to download (especially HTML which otherwise renders inline)
 	handle_path /reports/* {
 		root * /share/public/reports

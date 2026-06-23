@@ -44,6 +44,20 @@
 		file_server browse
 	}
 
+	# stac catalog (sdm extension) — static JSON tree
+	handle_path /stac/* {
+		import cors
+		root * /share/data/derived/stac
+		file_server browse
+	}
+
+	# versioned derived data (geoparquet, cogs, gpkg) referenced by stac assets
+	handle_path /derived/* {
+		import cors
+		root * /share/data/derived
+		file_server browse
+	}
+
 	# project documentation — serve static html from /share/public/www
 	handle /docs/* {
 		root * /share/public/www
