@@ -12,11 +12,17 @@ _MTIMES: dict[str, str] = {}
 _PATHS: dict[str, Path] = {}
 
 
-def init_connections(dbs: dict[str, Path]) -> None:
+def init_connections(
+    dbs: dict[str, Path],
+    threads: str | int | None = None,
+    memory_limit: str | None = None,
+) -> None:
     """Open one read-only connection per registered DB at startup.
 
     Fail-fast: any missing file aborts the process. Loads the h3 community
-    extension and the spatial extension on each connection.
+    extension and the spatial extension on each connection. Optional
+    `threads` / `memory_limit` cap per-connection CPU/RAM so a heavy tile
+    query can't peg every core or exhaust host RAM.
     """
     for name, path in dbs.items():
         if not path.exists():
@@ -24,6 +30,10 @@ def init_connections(dbs: dict[str, Path]) -> None:
         con = duckdb.connect(str(path), read_only=True)
         con.execute("INSTALL h3 FROM community; LOAD h3;")
         con.execute("INSTALL spatial; LOAD spatial;")
+        if threads:
+            con.execute(f"SET threads={int(threads)};")
+        if memory_limit:
+            con.execute(f"SET memory_limit='{memory_limit}';")
         _CONS[name]   = con
         _PATHS[name]  = path
         _MTIMES[name] = _mtime_str(path)

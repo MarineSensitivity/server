@@ -197,6 +197,8 @@ services:
       H3T_DEFAULT_DB:      obis
       H3T_MAX_ROWS:        "50000"
       H3T_STMT_TIMEOUT_MS: "3000"
+      H3T_THREADS:         "2"      # cap serving CPU (don't peg all cores)
+      H3T_MEMORY_LIMIT:    "4GB"    # cap serving RAM
     volumes:
       - /share:/share
     ports:

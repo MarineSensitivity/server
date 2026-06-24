@@ -65,6 +65,12 @@ def load_db_paths() -> tuple[dict[str, Path], str]:
 MAX_ROWS_PER_TILE: int = int(os.getenv("H3T_MAX_ROWS", "50000"))
 STMT_TIMEOUT_MS: int   = int(os.getenv("H3T_STMT_TIMEOUT_MS", "3000"))
 
+# per-connection DuckDB resource caps — bound CPU/RAM on the serving side so a
+# heavy tile query can't peg every core or exhaust host RAM. Unset = DuckDB
+# defaults (all cores, ~80% RAM).
+DUCKDB_THREADS: str | None      = os.getenv("H3T_THREADS", "").strip() or None
+DUCKDB_MEMORY_LIMIT: str | None = os.getenv("H3T_MEMORY_LIMIT", "").strip() or None
+
 # CORS
 CORS_ORIGIN: str = os.getenv("H3T_CORS_ORIGIN", "*")
 

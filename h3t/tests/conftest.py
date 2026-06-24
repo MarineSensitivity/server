@@ -46,7 +46,7 @@ def app_client(monkeypatch):
         "tables": ["t1", "t2"],
     }
 
-    def fake_init(_dbs):
+    def fake_init(_dbs, *args, **kwargs):
         return None
 
     def fake_execute_query(con, sql):

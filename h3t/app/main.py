@@ -29,7 +29,10 @@ log = logging.getLogger("h3t")
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     registry, default_name = config.load_db_paths()
-    db.init_connections(registry)
+    db.init_connections(
+        registry,
+        threads=config.DUCKDB_THREADS,
+        memory_limit=config.DUCKDB_MEMORY_LIMIT)
     app.state.default_db = default_name
     log.info("h3t ready: dbs=%s default=%s", db.db_names(), default_name)
     yield
