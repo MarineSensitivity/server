@@ -18,10 +18,15 @@ lives at `/share/data/obis/obis_h3.duckdb`.
 
 - `idx_h3(res, cell_id, n, sp, shannon, simpson, es)` — precomputed all-taxa
   indicators, res 1–7 (fast default layers; no per-request `lgamma`).
-- `occ_h3_r7 / _r5 / _r3(cell_id, aphiaid, phylum, class, "order", family,
-  genus, species, date_year, records)` — species-level store at three
-  resolution tiers for live taxon/year-filtered queries (ES50 computed on the
-  fly via DuckDB `lgamma`).
+- `idx_h3_taxon(rank, taxon, res, cell_id, n, sp, shannon, simpson, es)` —
+  precomputed per-taxon indicators for ranks phylum/class/order, clustered by
+  `(rank, taxon, res)`. A single-taxon map reads this instead of aggregating
+  `occ_h3` live, so it's as fast as the all-taxa layer.
+- `occ_h3(res, cell_id, aphiaid, phylum, class, "order", family, genus,
+  species, date_year, records)` — species-level store at resolution tiers
+  3/5/7 for live taxon/year-filtered queries (ES50 computed on the fly via
+  DuckDB `lgamma`). Clustered by `(res, taxonomy)` so a taxon filter prunes to
+  a few row groups.
 
 ## The SQL contract
 

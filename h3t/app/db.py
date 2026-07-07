@@ -72,15 +72,17 @@ def db_names() -> list[str]:
 
 
 def execute_query(
-    con: duckdb.DuckDBPyConnection,
+    cur: duckdb.DuckDBPyConnection,
     sql: str,
 ) -> tuple[list[str], list[tuple[Any, ...]]]:
-    """Run `sql` on `con` via a fresh cursor, returning (columns, rows).
+    """Run `sql` on a caller-owned cursor, returning (columns, rows), then close.
 
-    `cursor()` is cheap; the underlying connection is shared. The route
-    layer enforces a wall-clock timeout via asyncio.wait_for().
+    The route creates the cursor (`con.cursor()` — cheap; the underlying
+    connection is shared) and passes it in, so on an asyncio timeout it can
+    call `cur.interrupt()` from the event loop to actually cancel the running
+    DuckDB query. This helper owns closing the cursor so there is no
+    close/execute race with that interrupt.
     """
-    cur = con.cursor()
     try:
         cur.execute(sql)
         cols = [d[0] for d in cur.description] if cur.description else []
@@ -91,11 +93,10 @@ def execute_query(
 
 
 def execute_query_one(
-    con: duckdb.DuckDBPyConnection,
+    cur: duckdb.DuckDBPyConnection,
     sql: str,
 ) -> tuple[list[str], tuple[Any, ...] | None]:
-    """Variant returning the first row only (or None)."""
-    cur = con.cursor()
+    """Variant returning the first row only (or None), then closing the cursor."""
     try:
         cur.execute(sql)
         cols = [d[0] for d in cur.description] if cur.description else []

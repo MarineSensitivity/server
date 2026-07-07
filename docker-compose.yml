@@ -190,9 +190,13 @@ services:
       H3T_DBS:             "obis:/share/data/obis/obis_h3.duckdb"
       H3T_DEFAULT_DB:      obis
       H3T_MAX_ROWS:        "50000"
-      H3T_STMT_TIMEOUT_MS: "3000"
-      H3T_THREADS:         "2"      # cap serving CPU (don't peg all cores)
-      H3T_MEMORY_LIMIT:    "4GB"    # cap serving RAM
+      # common filtered maps now hit precomputed idx_h3 / idx_h3_taxon layers;
+      # these caps are the stopgap for the remaining live occ_h3 paths (year
+      # filters, multi-value / fine-rank taxa). raise the timeout above the
+      # app-side client timeout in apps/h3-db/app.R.
+      H3T_STMT_TIMEOUT_MS: "8000"
+      H3T_THREADS:         "4"      # cap serving CPU (don't peg all cores)
+      H3T_MEMORY_LIMIT:    "6GB"    # cap serving RAM (occ_h3 rollups can spill)
     volumes:
       - /share:/share
     ports:

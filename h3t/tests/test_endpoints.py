@@ -164,6 +164,50 @@ def test_stats_res_h3_out_of_range(app_client, b64_sql):
     assert r.json()["error"] == "bad_request"
 
 
+# --- timeout / interrupt -------------------------------------------------
+
+def _make_slow(seconds: float):
+    import time
+
+    def _slow(_cur, _sql):
+        time.sleep(seconds)  # overruns the (tiny, patched) statement budget
+        return (["h3id", "value", "n"], [])
+
+    return _slow
+
+
+def test_tile_timeout_504_and_interrupts(app_client, b64_sql, monkeypatch):
+    """A query overrunning the budget → 504 and the cursor is interrupted."""
+    from app import config as config_mod, db as db_mod
+
+    monkeypatch.setattr(config_mod, "STMT_TIMEOUT_MS", 50)
+    monkeypatch.setattr(db_mod, "execute_query", _make_slow(0.4))
+
+    r = app_client.get(f"/h3t/5/3/12.h3t?q={b64_sql(VALID_SQL)}")
+    assert r.status_code == 504
+    assert r.json()["reason"] == "query timeout"
+    # the route called cur.interrupt() to cancel the abandoned DuckDB query
+    assert db_mod._CONS["default"].interrupted >= 1
+
+
+def test_stats_timeout_504_and_interrupts(app_client, b64_sql, monkeypatch):
+    from app import config as config_mod, db as db_mod
+
+    monkeypatch.setattr(config_mod, "STMT_TIMEOUT_MS", 50)
+
+    def _slow_one(_cur, _sql):
+        import time
+        time.sleep(0.4)
+        return (["min", "max", "p02", "p98", "n"], None)
+
+    monkeypatch.setattr(db_mod, "execute_query_one", _slow_one)
+
+    r = app_client.get(f"/h3t/stats?q={b64_sql(VALID_SQL)}")
+    assert r.status_code == 504
+    assert r.json()["reason"] == "query timeout"
+    assert db_mod._CONS["default"].interrupted >= 1
+
+
 # --- CORS ----------------------------------------------------------------
 
 def test_cors_preflight(app_client):

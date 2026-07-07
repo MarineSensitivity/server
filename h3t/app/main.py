@@ -149,12 +149,20 @@ async def tile(
         buffer_deg=buffer_deg,
     )
 
+    cur = con.cursor()
     try:
         cols, rows = await asyncio.wait_for(
-            run_in_threadpool(db.execute_query, con, wrapped),
+            run_in_threadpool(db.execute_query, cur, wrapped),
             timeout=config.STMT_TIMEOUT_MS / 1000,
         )
     except asyncio.TimeoutError:
+        # asyncio.wait_for only abandons the await — the DuckDB call keeps
+        # running in the threadpool. interrupt() actually cancels it so it
+        # stops consuming a serving thread. cur.close() is owned by the worker.
+        try:
+            cur.interrupt()
+        except Exception:
+            log.exception("failed to interrupt timed-out tile query")
         log.warning("tile query timeout (>%dms)", config.STMT_TIMEOUT_MS)
         raise HTTPException(504, "query timeout")
     except Exception as e:
@@ -181,12 +189,19 @@ async def stats(
     v = _validate_q(q, res_h3)
     wrapped = h3t_query.wrap_stats_sql(v["normalized"])
 
+    cur = con.cursor()
     try:
         cols, row = await asyncio.wait_for(
-            run_in_threadpool(db.execute_query_one, con, wrapped),
+            run_in_threadpool(db.execute_query_one, cur, wrapped),
             timeout=config.STMT_TIMEOUT_MS / 1000,
         )
     except asyncio.TimeoutError:
+        # cancel the abandoned DuckDB query so it frees its serving thread
+        # (see the tile route for the full rationale).
+        try:
+            cur.interrupt()
+        except Exception:
+            log.exception("failed to interrupt timed-out stats query")
         log.warning("stats query timeout (>%dms)", config.STMT_TIMEOUT_MS)
         raise HTTPException(504, "query timeout")
     except Exception as e:

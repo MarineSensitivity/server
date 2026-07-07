@@ -16,9 +16,21 @@ from fastapi.testclient import TestClient
 
 
 class _FakeCon:
-    """Sentinel passed through as a connection."""
+    """Sentinel passed through as a connection.
+
+    The routes now do `con.cursor()` and may `cur.interrupt()` on timeout, so
+    the fake is its own cursor (returning self keeps `last_con` identity) and
+    provides a no-op interrupt.
+    """
     def __init__(self, name: str) -> None:
         self.name = name
+        self.interrupted = 0
+
+    def cursor(self) -> "_FakeCon":
+        return self
+
+    def interrupt(self) -> None:
+        self.interrupted += 1
 
 
 @pytest.fixture
