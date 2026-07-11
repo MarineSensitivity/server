@@ -165,6 +165,24 @@ services:
       - "8000:8000"
     restart: always
 
+  # v8 parallel serving: a tiny view-only DuckDB whose model_cell is a VIEW over the
+  # partitioned Parquet on S3 (marine-atlas/v8), rendered on the global [-180,180] cell COG.
+  # v7 titiler above stays fully live (A/B). serve.duckdb is KB — no multi-GB rsync.
+  titiler-v8:
+    container_name: titiler-v8
+    build: ./titiler
+    environment:
+      PORT:             8000
+      MSENS_CELLID_COG: /share/data/derived/r_cellid_global.tif
+      MSENS_DUCKDB:     /share/data/big/v8/serve.duckdb
+      MSENS_MAX_ROWS:   "1000000"
+      MSENS_LRU_SIZE:   "128"
+    volumes:
+      - /share:/share
+    ports:
+      - "8001:8000"
+    restart: always
+
   titilecache:
     container_name: titilecache
     image: varnish:latest # 7.4.2  # last updated: 2023-12-26

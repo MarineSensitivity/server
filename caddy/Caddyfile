@@ -101,6 +101,10 @@ titiler.marinesensitivity.org {
 	reverse_proxy titiler:8000
 }
 
+titiler-v8.marinesensitivity.org {
+	reverse_proxy titiler-v8:8000
+}
+
 titilecache.marinesensitivity.org {
 	reverse_proxy titilecache:6082
 }
