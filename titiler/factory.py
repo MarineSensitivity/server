@@ -39,6 +39,12 @@ COG_PATH    = os.environ.get("MSENS_CELLID_COG", "/share/data/derived/r_bio-orac
 DUCKDB_PATH = os.environ.get("MSENS_DUCKDB",    "/share/data/big/latest/sdm.duckdb")
 MAX_ROWS    = int(os.environ.get("MSENS_MAX_ROWS", "1000000"))
 LRU_SIZE    = int(os.environ.get("MSENS_LRU_SIZE", "128"))
+# base URL of the Hive-partitioned serving surface (serve/model_cell/mdl_id=*/data_0.parquet).
+# the `mdl_id` fast-path reads ONE partition by its exact path (anonymous GET, no S3 LIST) — the
+# merged-model equivalent of the old sorted-single-file row-group prune.
+SERVE_MODEL_CELL = os.environ.get(
+  "MSENS_SERVE_MODEL_CELL",
+  "https://s3.us-east-1.amazonaws.com/oceanmetrics.io-public/marine-atlas/v8/serve/model_cell")
 
 # disallowed statement / expression types
 _FORBIDDEN_STATEMENTS = (
@@ -112,8 +118,50 @@ _tls = threading.local()
 
 def _get_conn() -> duckdb.DuckDBPyConnection:
   if not hasattr(_tls, "conn"):
-    _tls.conn = duckdb.connect(DUCKDB_PATH, read_only=True)
+    conn = duckdb.connect(DUCKDB_PATH, read_only=True)
+    # httpfs so the mdl_key fast-path can read one serve partition over anonymous HTTPS
+    try:
+      conn.execute("INSTALL httpfs; LOAD httpfs;")
+    except Exception:  # noqa: BLE001
+      log.warning("httpfs load failed; mdl_key S3 fast-path unavailable", exc_info=True)
+    _tls.conn = conn
   return _tls.conn
+
+
+# The PUBLIC identifier is the stable `mdl_key` (e.g. "ms_merge|WORMS:137092"). The serving
+# surface is partitioned by an INTERNAL integer `mdl_id` (compact, dense over sorted mdl_key) that
+# can shift between releases — so it must NEVER appear in a client/app URL. We resolve mdl_key ->
+# mdl_id here from the `model` registry (loaded once per release, keyed on the mtime cache-bust tag),
+# so a bookmarked ?mdl_key= URL always points at the same model regardless of id renumbering.
+@lru_cache(maxsize=8)
+def _mdl_id_map(mtime: str) -> dict:  # noqa: ARG001  (mtime only keys the cache to the release)
+  rows = _get_conn().execute("SELECT mdl_key, mdl_id FROM model").fetchall()
+  return {str(k): int(v) for k, v in rows}
+
+
+def _mdl_key_value_sql(mdl_key: str, mtime: Optional[str]) -> str:
+  """server-built (trusted) query reading exactly one serve partition by exact path.
+
+  Resolves the stable public `mdl_key` -> internal `mdl_id`, then reads that one partition
+  (anonymous GET, no S3 LIST). Bypasses the client-SQL validator (which forbids read_parquet)
+  because the path is fully server-controlled and `mdl_id` is an integer from the registry.
+  """
+  mid = _mdl_id_map(mtime or "").get(mdl_key)
+  if mid is None:
+    raise HTTPException(status_code=404, detail=f"unknown mdl_key: {mdl_key}")
+  return (
+    "SELECT cell_id, CAST(val AS DOUBLE) AS value "
+    f"FROM read_parquet('{SERVE_MODEL_CELL}/mdl_id={int(mid)}/data_0.parquet')"
+  )
+
+
+def _resolve_canonical(sql: Optional[str], mdl_key: Optional[str], mtime: Optional[str]) -> str:
+  """pick the merged-model fast-path (stable mdl_key) or a validated client sql."""
+  if mdl_key:
+    return _mdl_key_value_sql(mdl_key, mtime)
+  if not sql:
+    raise HTTPException(status_code=400, detail="provide either mdl_key or sql")
+  return _decode_and_validate(sql)
 
 
 @lru_cache(maxsize=LRU_SIZE)
@@ -371,10 +419,11 @@ class MsensCellsFactory:
 
     @router.get("/statistics")
     def statistics(
-        sql:   str = Query(..., description="base64url-encoded SELECT cell_id, value ..."),
-        mtime: Optional[str] = Query(None, description="optional cache-bust tag — DuckDB mtime")):  # noqa: ARG001
-      """min/max/percentiles of the sql result — used by clients to set rescale."""
-      canonical = _decode_and_validate(sql)
+        sql:     Optional[str] = Query(None, description="base64url-encoded SELECT cell_id, value ..."),
+        mdl_key: Optional[str] = Query(None, description="stable model key fast-path (one serve partition)"),
+        mtime:   Optional[str] = Query(None, description="optional cache-bust tag — DuckDB mtime")):
+      """min/max/percentiles of the result — used by clients to set rescale."""
+      canonical = _resolve_canonical(sql, mdl_key, mtime)
       vmap = _load_value_map(canonical)
       vals = vmap[np.isfinite(vmap)]
       return {
@@ -391,7 +440,8 @@ class MsensCellsFactory:
     @router.get("/tilejson.json")
     def tilejson(
         request: Request,
-        sql:      str = Query(..., description="base64url-encoded SELECT cell_id, value ..."),
+        sql:      Optional[str] = Query(None, description="base64url-encoded SELECT cell_id, value ..."),
+        mdl_key:  Optional[str] = Query(None, description="stable model key fast-path (one serve partition)"),
         colormap: str = Query("spectral_r"),
         rescale:  Optional[str] = Query(None, description="'min,max'"),
         mtime:    Optional[str] = Query(None, description="optional cache-bust tag — DuckDB mtime"),
@@ -399,10 +449,12 @@ class MsensCellsFactory:
         maxzoom:  int = Query(12)):
       """tilejson document pointing at the /tiles endpoint."""
       # validate early
-      _decode_and_validate(sql)
+      _resolve_canonical(sql, mdl_key, mtime)
       bb = list(_cog_geographic_bounds())
 
-      params = {"sql": sql, "colormap": colormap}
+      params = {"colormap": colormap}
+      if mdl_key: params["mdl_key"] = mdl_key
+      elif sql:   params["sql"]     = sql
       if rescale: params["rescale"] = rescale
       if mtime:   params["mtime"]   = mtime
       # `color` is not in the tilejson arg list (add it manually if the
@@ -422,15 +474,16 @@ class MsensCellsFactory:
     @router.get("/tiles/{z}/{x}/{y}.png", response_class=Response)
     def tile(
         z: int, x: int, y: int,
-        sql:      str = Query(...),
+        sql:      Optional[str] = Query(None),
+        mdl_key:  Optional[str] = Query(None, description="stable model key fast-path (one serve partition)"),
         colormap: str = Query("spectral_r"),
         rescale:  Optional[str] = Query(None),
         color:    Optional[str] = Query(
           None,
           description="hex #rrggbb[aa]; if set, render all valid pixels in this color "
                       "(single-color mask) and ignore colormap/rescale"),
-        mtime:    Optional[str] = Query(None)):  # noqa: ARG001  (mtime is a cache key, consumed by varnish)
-      canonical = _decode_and_validate(sql)
+        mtime:    Optional[str] = Query(None)):
+      canonical = _resolve_canonical(sql, mdl_key, mtime)
       vmap = _load_value_map(canonical)
 
       if color is not None:
