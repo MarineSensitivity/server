@@ -19,14 +19,20 @@ RUN curl -L https://quarto.org/download/latest/quarto-linux-amd64.deb \
   && rm -rf /var/lib/apt/lists/*
 
 # install R packages on CRAN; `rm` call removes install2.r's cache
-#   duckdb + DBI back the /h3 endpoint (OBIS H3 summaries), replacing the
-#   retired postgres stack.
+#   DBI backs the /h3 endpoint (OBIS H3 summaries), replacing the retired
+#   postgres stack. duckdb is installed separately below (needs >= 1.5).
 RUN install2.r --error \
- DBI dbplyr dplyr digest duckdb DT fs ggiraph ggplot2 glue gt here httr2 jsonlite \
+ DBI dbplyr dplyr digest DT fs ggiraph ggplot2 glue gt here httr2 jsonlite \
  librarian markdown plumber pool purrr quarto rmarkdown rnaturalearth \
  rnaturalearthdata \
  RPostgres plotly readr scales shiny stringr terra tibble tidyr yaml \
  && rm -rf /tmp/downloaded_packages
+
+# duckdb >= 1.5 for the /h3 endpoint AND to read the obis_h3 store (and for
+# msens below, which requires >= 1.5.0). The base image's pinned RSPM snapshot
+# ships duckdb 1.1.1 — too old — so install the latest jammy binary explicitly.
+RUN R -e 'install.packages("duckdb", repos = "https://packagemanager.posit.co/cran/__linux__/jammy/latest")' \
+ && R -e 'stopifnot(packageVersion("duckdb") >= "1.5.0")'
 
 # pre-install the DuckDB h3 + spatial extensions so /h3 needs no network at
 # request time (non-fatal: the endpoint's runtime INSTALL is an idempotent
