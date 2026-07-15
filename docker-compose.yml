@@ -30,6 +30,22 @@ services:
       - /share:/share
       - /share/shiny_apps:/srv/shiny-server
 
+  # plumber: DuckDB-backed custom API (postgres stack retired 2026-06). Serves
+  # the OBIS H3 summary endpoint /h3 (obisindicators::obis_h3t_sql) from the same
+  # store as the h3t tile service. Caddy already routes
+  # api.marinesensitivity.org -> plumber:8888. No postgis dependency: the
+  # postgres-backed endpoints degrade (see api/plumber.R lazy `con`).
+  plumber:
+    container_name: plumber
+    build: ./plumber
+    environment:
+      MSENS_OBIS_DUCKDB: /share/data/obis/obis_h3.duckdb
+    ports:
+      - 8888:8888  # api
+    volumes:
+      - /share:/share
+    restart: unless-stopped
+
   # --- postgres stack retired (2026-06) to free resources for OBIS h3 build ---
   # plumber:
   #   container_name: plumber

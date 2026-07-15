@@ -19,12 +19,21 @@ RUN curl -L https://quarto.org/download/latest/quarto-linux-amd64.deb \
   && rm -rf /var/lib/apt/lists/*
 
 # install R packages on CRAN; `rm` call removes install2.r's cache
+#   duckdb + DBI back the /h3 endpoint (OBIS H3 summaries), replacing the
+#   retired postgres stack.
 RUN install2.r --error \
- dbplyr dplyr digest DT fs ggiraph ggplot2 glue gt here httr2 jsonlite \
+ DBI dbplyr dplyr digest duckdb DT fs ggiraph ggplot2 glue gt here httr2 jsonlite \
  librarian markdown plumber pool purrr quarto rmarkdown rnaturalearth \
  rnaturalearthdata \
  RPostgres plotly readr scales shiny stringr terra tibble tidyr yaml \
  && rm -rf /tmp/downloaded_packages
+
+# pre-install the DuckDB h3 + spatial extensions so /h3 needs no network at
+# request time (non-fatal: the endpoint's runtime INSTALL is an idempotent
+# fallback).
+RUN R -e 'library(duckdb); con <- dbConnect(duckdb()); \
+  DBI::dbExecute(con, "INSTALL h3 FROM community; INSTALL spatial;"); \
+  DBI::dbDisconnect(con, shutdown = TRUE)' || true
 
 # TinyTeX for PDF rendering of /report (idempotent if already installed)
 # Kept above the msens layer so bumping msens doesn't re-run the slow
@@ -39,7 +48,7 @@ RUN R -e 'if (!nzchar(Sys.which("lualatex"))) tinytex::install_tinytex()'
 RUN R -e 'remotes::install_github("MarineSensitivity/msens", upgrade = FALSE); library(msens)' \
  && rm -rf /tmp/downloaded_packages/
 
-EXPOSE 8000
+EXPOSE 8888
 
 CMD Rscript /share/github/MarineSensitivity/api/run-api.R
 
