@@ -131,20 +131,51 @@ def test_tile_substitutes_res_placeholder(app_client, b64_sql):
     assert "{{res}}" not in captured
 
 
-def test_tile_substitutes_bbox_placeholder(app_client, b64_sql):
-    # the tile route expands {{bbox}} into a lat/lng prune predicate before
-    # validation + wrapping, so the executed SQL carries it and no token remains
+def test_tile_strips_legacy_bbox_placeholder(app_client, b64_sql):
+    # backward-compat: a cached URL from the old {{bbox}} clients still runs —
+    # the token is stripped to empty. (The mocked db has no hex_prune tables, so
+    # no auto-injection happens here; that path is covered in test_tiles.py.)
     sql = "SELECT cell_id, n AS value, n FROM idx_h3 WHERE res = {{res}} {{bbox}}"
     r = app_client.get(f"/h3t/5/3/12.h3t?q={b64_sql(sql)}&res_h3=7")
     assert r.status_code == 200
     captured = app_client.app.state.canned["last_sql"]
     assert "{{bbox}}" not in captured
-    assert "lat BETWEEN" in captured and "lng" in captured
+
+
+def test_tile_auto_injects_hex_prune(app_client, b64_sql, monkeypatch):
+    # when the db carries hex_prune tables and the tile is fine enough, the route
+    # injects `hex_prune IN (<covering>)` — covering is mocked so no h3 needed
+    from app import db as db_mod
+    from app import prune as prune_mod
+    monkeypatch.setattr(db_mod, "prune_tables", lambda name: {"idx_h3": "hex_prune"})
+    monkeypatch.setattr(prune_mod, "covering_cells", lambda *a, **k: (100, 200))
+    sql = "SELECT cell_id, n AS value, n FROM idx_h3 WHERE res = {{res}}"
+    r = app_client.get(f"/h3t/9/100/200.h3t?q={b64_sql(sql)}&res_h3=7")
+    assert r.status_code == 200
+    captured = app_client.app.state.canned["last_sql"].replace('"', "")
+    assert "hex_prune IN (100, 200)" in captured
+
+
+def test_tile_skips_prune_when_too_coarse(app_client, b64_sql, monkeypatch):
+    # tiles coarser than PRUNE_RES don't inject (coarse rows aren't keyed on a
+    # res-PRUNE_RES parent) — covering must not even be consulted
+    from app import db as db_mod
+    from app import prune as prune_mod
+
+    def _boom(*a, **k):  # would raise if called
+        raise AssertionError("covering_cells must not be called when too coarse")
+
+    monkeypatch.setattr(db_mod, "prune_tables", lambda name: {"idx_h3": "hex_prune"})
+    monkeypatch.setattr(prune_mod, "covering_cells", _boom)
+    sql = "SELECT cell_id, n AS value, n FROM idx_h3 WHERE res = {{res}}"
+    r = app_client.get(f"/h3t/2/1/1.h3t?q={b64_sql(sql)}&res_h3=2")
+    assert r.status_code == 200
+    assert "hex_prune" not in app_client.app.state.canned["last_sql"]
 
 
 def test_stats_strips_bbox_placeholder(app_client, b64_sql):
-    # the stats route has no tile bbox, so {{bbox}} collapses to empty (the
-    # summary is global) — and the query must still validate + run
+    # the stats route has no tile bbox and never prunes; {{bbox}} collapses to
+    # empty and the query still validates + runs (global summary)
     app_client.app.state.canned["one"] = (
         ["min", "max", "p02", "p98", "n"], (0.0, 1.0, 0.0, 1.0, 5))
     sql = "SELECT cell_id, n AS value, n FROM idx_h3 WHERE res = {{res}} {{bbox}}"
@@ -152,7 +183,7 @@ def test_stats_strips_bbox_placeholder(app_client, b64_sql):
     assert r.status_code == 200
     captured = app_client.app.state.canned["last_sql"]
     assert "{{bbox}}" not in captured
-    assert "lat BETWEEN" not in captured
+    assert "hex_prune" not in captured
 
 
 # --- stats ---------------------------------------------------------------

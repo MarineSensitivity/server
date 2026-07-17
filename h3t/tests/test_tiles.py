@@ -7,14 +7,14 @@ import base64
 import pytest
 from fastapi import Response
 
-from app.h3t_query import TileBBox
+from app.prune import inject_prune
 from app.tiles import (
     build_cells,
     compute_etag,
     compute_stats_etag,
     decode_sql,
     set_cache_headers,
-    substitute_bbox,
+    strip_bbox_placeholder,
     substitute_res,
 )
 
@@ -44,34 +44,95 @@ def test_substitute_res_noop_when_absent():
     assert substitute_res("SELECT 1", 7) == "SELECT 1"
 
 
-# --- substitute_bbox -----------------------------------------------------
+# --- strip_bbox_placeholder (backward compat) ----------------------------
 
-def test_substitute_bbox_none_strips_token():
-    # stats route (no bbox) collapses {{bbox}} to empty
+def test_strip_bbox_placeholder_removes_token():
     sql = "SELECT cell_id, n AS value FROM idx_h3 WHERE res = 5 {{bbox}}"
-    out = substitute_bbox(sql, None)
-    assert "{{bbox}}" not in out
-    assert out == "SELECT cell_id, n AS value FROM idx_h3 WHERE res = 5 "
+    assert strip_bbox_placeholder(sql) == \
+        "SELECT cell_id, n AS value FROM idx_h3 WHERE res = 5 "
 
 
-def test_substitute_bbox_injects_latlng_predicate():
-    bbox = TileBBox(lon_min=-50.0, lon_max=-40.0, lat_min=-30.0, lat_max=-20.0)
-    sql = "... WHERE res = 7 {{bbox}} GROUP BY 1"
-    out = substitute_bbox(sql, bbox, buffer_deg=0.1)
-    assert "{{bbox}}" not in out
-    # lat is a top-level AND (prunable); lng handles the antimeridian ±360
-    assert "AND lat BETWEEN -30.1000000000 AND -19.9000000000" in out
-    assert "lng BETWEEN -50.1000000000 AND -39.9000000000" in out
-    assert "lng + 360 BETWEEN" in out and "lng - 360 BETWEEN" in out
+def test_strip_bbox_placeholder_noop_when_absent():
+    sql = "SELECT cell_id, value, n FROM idx_h3 WHERE res = 5"
+    assert strip_bbox_placeholder(sql) == sql
 
 
-def test_substitute_bbox_noop_when_absent():
-    # a query without the token (precomputed per-taxon path, or old clients)
-    # passes through unchanged — backward compatible
+# --- inject_prune (AST rewrite: add hex_prune IN(...) to spatial scans) ---
+
+PTABLES = {"occ_h3": "hex_prune", "idx_h3": "hex_prune"}
+COVER = (100, 200, 300)
+
+
+def test_inject_prune_idx_h3_adds_predicate():
+    sql = "SELECT cell_id, n AS value, n FROM idx_h3 WHERE res = 5"
+    out, injected = inject_prune(sql, PTABLES, COVER)
+    assert injected
+    assert "hex_prune IN (100, 200, 300)" in out.replace('"', "")
+    assert "idx_h3" in out
+
+
+def test_inject_prune_targets_only_spatial_tables():
+    # the recursive-CTE `taxon` table and `idx_h3_taxon` have no hex_prune -> skip;
+    # only occ_h3 gets the predicate
+    sql = (
+        "WITH RECURSIVE taxon_tree AS ("
+        "  SELECT taxonID, parentNameUsageID FROM taxon WHERE taxonID IN (1) "
+        "  UNION ALL "
+        "  SELECT t.taxonID, t.parentNameUsageID FROM taxon t "
+        "  JOIN taxon_tree tt ON t.parentNameUsageID = tt.taxonID), "
+        "src AS ("
+        "  SELECT cell_id, SUM(records) AS ni FROM occ_h3 "
+        "  WHERE res = 7 AND aphiaid IN (SELECT taxonID FROM taxon_tree) GROUP BY 1) "
+        "SELECT cell_id, ni AS value, ni AS n FROM src"
+    )
+    out, injected = inject_prune(sql, PTABLES, COVER)
+    assert injected
+    flat = out.replace('"', "")
+    assert flat.count("hex_prune IN") == 1     # only the occ_h3 scan
+    assert "taxon.hex_prune" not in flat
+
+
+def test_inject_prune_noop_without_cover_or_tables():
+    sql = "SELECT cell_id, n AS value FROM idx_h3 WHERE res = 5"
+    assert inject_prune(sql, PTABLES, ()) == (sql, False)
+    assert inject_prune(sql, {}, COVER) == (sql, False)
+
+
+def test_inject_prune_noop_when_no_spatial_table():
     sql = "SELECT cell_id, value, n FROM idx_h3_taxon WHERE rank = 'class'"
-    bbox = TileBBox(lon_min=0.0, lon_max=1.0, lat_min=0.0, lat_max=1.0)
-    assert substitute_bbox(sql, bbox, buffer_deg=0.1) == sql
-    assert substitute_bbox(sql, None) == sql
+    out, injected = inject_prune(sql, PTABLES, COVER)
+    assert not injected
+    assert out == sql
+
+
+# --- covering_cells (needs the duckdb h3 extension) ----------------------
+
+def _h3_available():
+    import duckdb
+    try:
+        duckdb.connect().execute("INSTALL h3 FROM community; LOAD h3;")
+        return True
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(not _h3_available(), reason="duckdb h3 extension unavailable")
+def test_covering_cells_returns_positive_bigints_and_is_cached():
+    from app.prune import covering_cells
+    cov = covering_cells(3, -50.0, -40.0, -30.0, -20.0)
+    assert len(cov) > 0
+    assert all(isinstance(c, int) and 0 < c < 2**63 for c in cov)
+    # a bigger bbox covers at least as many res-3 cells
+    assert len(covering_cells(3, -55.0, -35.0, -35.0, -15.0)) >= len(cov)
+    # deterministic (lru-cached)
+    assert covering_cells(3, -50.0, -40.0, -30.0, -20.0) == cov
+
+
+@pytest.mark.skipif(not _h3_available(), reason="duckdb h3 extension unavailable")
+def test_covering_cells_skips_antimeridian():
+    from app.prune import covering_cells
+    # buffered box crossing +/-180 -> empty (caller falls back to a whole scan)
+    assert covering_cells(3, 179.5, 179.9, 0.0, 1.0) == ()
 
 
 # --- etag ----------------------------------------------------------------

@@ -10,6 +10,9 @@ import duckdb
 _CONS: dict[str, duckdb.DuckDBPyConnection] = {}
 _MTIMES: dict[str, str] = {}
 _PATHS: dict[str, Path] = {}
+# per-db map {table_name_lower: prune_column} for tables that carry a `hex_prune`
+# column — the automatic per-tile spatial prune targets (see app/prune.py).
+_PRUNE: dict[str, dict[str, str]] = {}
 
 
 def init_connections(
@@ -37,6 +40,26 @@ def init_connections(
         _CONS[name]   = con
         _PATHS[name]  = path
         _MTIMES[name] = _mtime_str(path)
+        _PRUNE[name]  = _detect_prune_tables(con)
+
+
+def _detect_prune_tables(con: duckdb.DuckDBPyConnection) -> dict[str, str]:
+    """Return {table_lower: 'hex_prune'} for main-schema tables carrying it.
+
+    These are the tables the per-tile spatial prune injects into (app/prune.py).
+    Introspected once at startup so the tile route needs no per-request schema
+    lookup.
+    """
+    rows = con.execute(
+        "SELECT lower(table_name) FROM information_schema.columns "
+        "WHERE table_schema = 'main' AND lower(column_name) = 'hex_prune'"
+    ).fetchall()
+    return {r[0]: "hex_prune" for r in rows}
+
+
+def prune_tables(name: str) -> dict[str, str]:
+    """The {table: prune_col} map for a db (empty if none)."""
+    return _PRUNE.get(name, {})
 
 
 def _mtime_str(path: Path) -> str:

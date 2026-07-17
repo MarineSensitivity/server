@@ -34,43 +34,16 @@ def substitute_res(sql: str, res_h3: int) -> str:
     return _RES_PLACEHOLDER.sub(str(int(res_h3)), sql)
 
 
-def substitute_bbox(sql: str, bbox=None, buffer_deg: float = 0.0) -> str:
-    """Replace `{{bbox}}` with a stored-lat/lng predicate that prunes the scan
-    to the tile, or with empty when there is no bbox (e.g. the stats route).
+def strip_bbox_placeholder(sql: str) -> str:
+    """Remove any `{{bbox}}` token from the SQL.
 
-    Clients (obisindicators::obis_h3t_sql) bake `{{bbox}}` into the WHERE of the
-    `occ_h3` / `idx_h3` scan. Those tables carry precomputed `lat`/`lng` columns
-    and are physically clustered by `(res, lat, lng)`, so a `lat/lng BETWEEN`
-    predicate lets DuckDB prune row groups to the tile instead of aggregating
-    the whole globe per tile.
-
-    `bbox` is an `h3t_query.TileBBox`. `buffer_deg` must be large enough that
-    this inner (base-cell) filter is a SUPERSET of the outer (display-cell
-    centroid) filter applied by `wrap_tile_sql` — otherwise a cell straddling
-    the tile edge could be dropped or under-counted. The tile route passes a
-    larger buffer here than the outer wrap for exactly that reason.
-
-    Queries that contain no `{{bbox}}` token (the precomputed per-taxon path, or
-    any pre-existing client) pass through unchanged — the substitution is a
-    no-op, so this is fully backward compatible.
+    The server no longer prunes via a client-baked placeholder — it auto-injects
+    `hex_prune IN (...)` from `z/x/y` (see app/prune.py). This exists only for
+    backward compatibility: cached tile URLs minted by the earlier `{{bbox}}`
+    clients still validate and run (the token collapses to empty; the automatic
+    injection then prunes them just the same).
     """
-    if bbox is None:
-        return _BBOX_PLACEHOLDER.sub("", sql)
-    lm = bbox.lon_min - buffer_deg
-    lM = bbox.lon_max + buffer_deg
-    am = bbox.lat_min - buffer_deg
-    aM = bbox.lat_max + buffer_deg
-    # lat kept as a top-level AND so its zonemap prunes even though the lng OR
-    # (antimeridian ±360) can't prune; tiles are thin in lat, so lat pruning
-    # alone gives the row-group reduction.
-    pred = (
-        f"AND lat BETWEEN {am:.10f} AND {aM:.10f} "
-        f"AND (lng BETWEEN {lm:.10f} AND {lM:.10f} "
-        f"OR lng + 360 BETWEEN {lm:.10f} AND {lM:.10f} "
-        f"OR lng - 360 BETWEEN {lm:.10f} AND {lM:.10f})"
-    )
-    # function replacement avoids re.sub interpreting backslashes/group refs
-    return _BBOX_PLACEHOLDER.sub(lambda _m: pred, sql)
+    return _BBOX_PLACEHOLDER.sub("", sql)
 
 
 def compute_etag(
