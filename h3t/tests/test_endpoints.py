@@ -131,6 +131,30 @@ def test_tile_substitutes_res_placeholder(app_client, b64_sql):
     assert "{{res}}" not in captured
 
 
+def test_tile_substitutes_bbox_placeholder(app_client, b64_sql):
+    # the tile route expands {{bbox}} into a lat/lng prune predicate before
+    # validation + wrapping, so the executed SQL carries it and no token remains
+    sql = "SELECT cell_id, n AS value, n FROM idx_h3 WHERE res = {{res}} {{bbox}}"
+    r = app_client.get(f"/h3t/5/3/12.h3t?q={b64_sql(sql)}&res_h3=7")
+    assert r.status_code == 200
+    captured = app_client.app.state.canned["last_sql"]
+    assert "{{bbox}}" not in captured
+    assert "lat BETWEEN" in captured and "lng" in captured
+
+
+def test_stats_strips_bbox_placeholder(app_client, b64_sql):
+    # the stats route has no tile bbox, so {{bbox}} collapses to empty (the
+    # summary is global) — and the query must still validate + run
+    app_client.app.state.canned["one"] = (
+        ["min", "max", "p02", "p98", "n"], (0.0, 1.0, 0.0, 1.0, 5))
+    sql = "SELECT cell_id, n AS value, n FROM idx_h3 WHERE res = {{res}} {{bbox}}"
+    r = app_client.get(f"/h3t/stats?q={b64_sql(sql)}&res_h3=5")
+    assert r.status_code == 200
+    captured = app_client.app.state.canned["last_sql"]
+    assert "{{bbox}}" not in captured
+    assert "lat BETWEEN" not in captured
+
+
 # --- stats ---------------------------------------------------------------
 
 def test_stats_with_row(app_client, b64_sql):

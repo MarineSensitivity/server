@@ -7,12 +7,14 @@ import base64
 import pytest
 from fastapi import Response
 
+from app.h3t_query import TileBBox
 from app.tiles import (
     build_cells,
     compute_etag,
     compute_stats_etag,
     decode_sql,
     set_cache_headers,
+    substitute_bbox,
     substitute_res,
 )
 
@@ -40,6 +42,36 @@ def test_substitute_res_replaces_all_occurrences():
 
 def test_substitute_res_noop_when_absent():
     assert substitute_res("SELECT 1", 7) == "SELECT 1"
+
+
+# --- substitute_bbox -----------------------------------------------------
+
+def test_substitute_bbox_none_strips_token():
+    # stats route (no bbox) collapses {{bbox}} to empty
+    sql = "SELECT cell_id, n AS value FROM idx_h3 WHERE res = 5 {{bbox}}"
+    out = substitute_bbox(sql, None)
+    assert "{{bbox}}" not in out
+    assert out == "SELECT cell_id, n AS value FROM idx_h3 WHERE res = 5 "
+
+
+def test_substitute_bbox_injects_latlng_predicate():
+    bbox = TileBBox(lon_min=-50.0, lon_max=-40.0, lat_min=-30.0, lat_max=-20.0)
+    sql = "... WHERE res = 7 {{bbox}} GROUP BY 1"
+    out = substitute_bbox(sql, bbox, buffer_deg=0.1)
+    assert "{{bbox}}" not in out
+    # lat is a top-level AND (prunable); lng handles the antimeridian ±360
+    assert "AND lat BETWEEN -30.1000000000 AND -19.9000000000" in out
+    assert "lng BETWEEN -50.1000000000 AND -39.9000000000" in out
+    assert "lng + 360 BETWEEN" in out and "lng - 360 BETWEEN" in out
+
+
+def test_substitute_bbox_noop_when_absent():
+    # a query without the token (precomputed per-taxon path, or old clients)
+    # passes through unchanged — backward compatible
+    sql = "SELECT cell_id, value, n FROM idx_h3_taxon WHERE rank = 'class'"
+    bbox = TileBBox(lon_min=0.0, lon_max=1.0, lat_min=0.0, lat_max=1.0)
+    assert substitute_bbox(sql, bbox, buffer_deg=0.1) == sql
+    assert substitute_bbox(sql, None) == sql
 
 
 # --- etag ----------------------------------------------------------------
