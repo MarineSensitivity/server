@@ -37,12 +37,18 @@ RUN install2.r --error \
 # relying on resolution to happen to pull them.
 #
 # If you ever install a package at runtime, add it here in the SAME change.
+#
+# `otel` and `snowflakeauth` are intentionally EXCLUDED: they exist in the live
+# container only because a runtime install resolved against a NEWER CRAN snapshot
+# than the one rocker/geospatial:4.4.1 pins, so a clean build cannot fetch them
+# ("not available for this version of R"). They are OpenTelemetry / Snowflake auth
+# shims pulled in as soft deps — nothing in these apps uses them.
 RUN install2.r --error \
   base64url bsicons checkmate cmocean cols4all conductor crul duckdbfs dygraphs \
   fontBitstreamVera fontLiberation fontquiver Formula future gdtools geojson geojsonio \
   globals httpcode insight jose jqr leafgl leaflegend listenv litedown maptiles \
-  marginaleffects otel pak parallelly protolite Rnanoflann rnaturalearth rnaturalearthdata \
-  S7 secretbase snakecase snowflakeauth spacesXYZ stringdist \
+  marginaleffects pak parallelly protolite Rnanoflann rnaturalearth rnaturalearthdata \
+  S7 secretbase snakecase spacesXYZ stringdist \
   && rm -rf /tmp/downloaded_packages   # clean R package cache
 
 # bbest/mapgl is a FORK, not walkerke/mapgl: the apps depend on fork behaviour
