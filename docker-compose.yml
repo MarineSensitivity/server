@@ -22,6 +22,12 @@ services:
       USER: admin
       PASSWORD: ${PASSWORD}
       ADD: shiny
+      # usage-log Sheet endpoint (Apps Script /exec) for the Shiny apps'
+      # msens::ga_js() beacon. Set MSENS_LOG_URL in the server .env alongside
+      # PASSWORD; if unset the Sheet leg is a silent no-op and only GA4 receives
+      # events. The apps hold no credential — the endpoint is the whole secret,
+      # so it belongs in .env (untracked), never in the app source.
+      MSENS_LOG_URL: ${MSENS_LOG_URL:-}
     ports:
       - 8787:8787  # rstudio
       - 3838:3838  # shiny
