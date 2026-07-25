@@ -69,9 +69,18 @@ RUN installGithub.r \
   yogevherz/plotme@ff9ea913949b4274cac244c5ecb6061c92ad2556 \
   && rm -rf /tmp/downloaded_packages   # clean R package cache
 
-# for each directory in apps, chgrp to shiny and chmod g+rx
-RUN chgrp -R shiny /share/github/MarineSensitivity/apps \
-  && chmod -R g+rx /share/github/MarineSensitivity/apps
+# NOTE: there is deliberately no `chgrp -R shiny /share/github/...` step here.
+# `/share` is a RUNTIME bind mount (see docker-compose.yml) and does not exist
+# during the build, so such a step can only ever fail with
+# "chgrp: cannot access '/share/...': No such file or directory" — which is
+# exactly why this image had gone unrebuilt while the Dockerfile drifted ahead
+# of it.
+#
+# App-directory permissions are HOST state, not image state. The checkouts are
+# already world-readable (drwxr-xr-x, owner ubuntu), and shiny-server's `run_as
+# shiny` user can read them — verified inside the container with
+# `su -s /bin/sh shiny -c 'test -r .../app.R'`. If that ever changes, fix it on
+# the host, not here.
 
 EXPOSE 3838
 
