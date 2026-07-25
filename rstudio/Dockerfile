@@ -6,6 +6,15 @@ FROM rocker/geospatial:4.6.1
 RUN /rocker_scripts/install_shiny_server.sh
 RUN /rocker_scripts/install_python.sh
 
+# shiny-server runs apps as `shiny` (run_as shiny), and some files on the /share
+# bind mount are group-`staff` with no world read — e.g.
+# /share/data/derived/r_bio-oracle_planarea.tif is `-rw-r----- ubuntu staff`,
+# which BOTH v7 apps read at startup. The previous image had shiny in staff; the
+# stock 4.6.1 image does not, so recreating the container broke v7 with
+# "Permission denied (GDAL error 4)". Declare the membership so it survives any
+# rebuild. `staff` is gid 50 in the container and matches the host group.
+RUN usermod -aG staff shiny
+
 # install system dependencies
 #   plumber deps; `rm` call removes `apt` cache; libpq RPostgres dep
 RUN apt-get update -qq && apt-get install -y --no-install-recommends \
@@ -68,6 +77,26 @@ RUN installGithub.r \
   crazycapivara/h3-r@6b658e832f6907581d9d5c5296d611c4e4cf372a \
   yogevherz/plotme@ff9ea913949b4274cac244c5ecb6061c92ad2556 \
   && rm -rf /tmp/downloaded_packages   # clean R package cache
+
+# DuckDB extensions, baked into the image at a PERMANENT path.
+#
+# Left to itself, duckdb autoloads extensions into a per-session temp dir
+# ("/tmp/Rtmp*/duckdb/extensions"), which is wiped when the R session ends and
+# re-downloaded next time. After the container recreate that download had no
+# cached copy to fall back on, so the v8 species app died at startup with
+#   Extension Autoloading Error: ... 'httpfs' ... not found
+# because its `dataset` query goes through the S3-backed serve.duckdb views.
+#
+# Installing them here (with DUCKDB_EXTENSION_DIRECTORY set for build AND
+# runtime) makes the app independent of a network fetch at startup and
+# reproducible across rebuilds. `aws` is included because the dotted public
+# bucket needs it for globbing; both are world-readable for the `shiny` user.
+ENV DUCKDB_EXTENSION_DIRECTORY=/opt/duckdb/extensions
+RUN mkdir -p "$DUCKDB_EXTENSION_DIRECTORY" \
+  && Rscript -e 'con <- DBI::dbConnect(duckdb::duckdb()); \
+       for (e in c("httpfs", "aws")) DBI::dbExecute(con, sprintf("INSTALL %s", e)); \
+       DBI::dbDisconnect(con, shutdown = TRUE)' \
+  && chmod -R a+rX /opt/duckdb
 
 # NOTE: there is deliberately no `chgrp -R shiny /share/github/...` step here.
 # `/share` is a RUNTIME bind mount (see docker-compose.yml) and does not exist
