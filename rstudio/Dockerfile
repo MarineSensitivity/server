@@ -97,25 +97,37 @@ RUN installGithub.r \
   bbest/mapgl@484e869f93af01bf396cbba7f074f0a3c53eba6d \
   && rm -rf /tmp/downloaded_packages   # clean R package cache
 
-# DuckDB extensions, baked into the image at a PERMANENT path.
+# DuckDB extensions, baked into the PERSISTENT duckdb home each user actually reads.
 #
-# Left to itself, duckdb autoloads extensions into a per-session temp dir
-# ("/tmp/Rtmp*/duckdb/extensions"), which is wiped when the R session ends and
-# re-downloaded next time. After the container recreate that download had no
-# cached copy to fall back on, so the v8 species app died at startup with
+# Left to itself, duckdb stores extensions in a per-session temp dir
+# ("/tmp/Rtmp*/duckdb/extensions"), wiped when the R session ends and re-downloaded
+# next time. When that download fails, the v8 species app dies at startup with
 #   Extension Autoloading Error: ... 'httpfs' ... not found
 # because its `dataset` query goes through the S3-backed serve.duckdb views.
 #
-# Installing them here (with DUCKDB_EXTENSION_DIRECTORY set for build AND
-# runtime) makes the app independent of a network fetch at startup and
-# reproducible across rebuilds. `aws` is included because the dotted public
-# bucket needs it for globbing; both are world-readable for the `shiny` user.
-ENV DUCKDB_EXTENSION_DIRECTORY=/opt/duckdb/extensions
-RUN mkdir -p "$DUCKDB_EXTENSION_DIRECTORY" \
+# The previous attempt at this set ENV DUCKDB_EXTENSION_DIRECTORY=/opt/duckdb/extensions
+# and installed into it. That NEVER worked, in two independent ways:
+#   1. duckdb R 1.5.x IGNORES that env var — it picks ~/.duckdb when that directory
+#      exists and a temp dir otherwise, so the build installed to the temp dir and
+#      /opt/duckdb/extensions shipped EMPTY (verified: `find /opt/duckdb -type f`
+#      returned 0 files in the running container).
+#   2. shiny-server starts an app with `su -l shiny`, a LOGIN shell, which resets
+#      the environment — so a container-level ENV could not have reached the app
+#      even if the directory had been populated.
+# The bake looked correct and bought nothing; every app start silently re-downloaded.
+#
+# duckdb's own message names the supported mechanism ("Run duckdb(shared_home = TRUE)
+# (or create ~/.duckdb)"). ~/.duckdb is the one that needs no app-code change, so
+# create it per user and install into it. `aws` is included because the dotted public
+# bucket needs it for globbing. `shiny` runs the apps; `root` is what
+# `docker exec rstudio Rscript ...` (release_marine-atlas.qmd) runs as.
+RUN mkdir -p /home/shiny/.duckdb && chown -R shiny:shiny /home/shiny/.duckdb \
+  && su -s /bin/sh shiny -c 'cd /home/shiny && HOME=/home/shiny Rscript -e "con <- DBI::dbConnect(duckdb::duckdb()); for (e in c(\"httpfs\", \"aws\")) DBI::dbExecute(con, sprintf(\"INSTALL %s\", e)); DBI::dbDisconnect(con, shutdown = TRUE)"' \
+  && mkdir -p /root/.duckdb \
   && Rscript -e 'con <- DBI::dbConnect(duckdb::duckdb()); \
        for (e in c("httpfs", "aws")) DBI::dbExecute(con, sprintf("INSTALL %s", e)); \
        DBI::dbDisconnect(con, shutdown = TRUE)' \
-  && chmod -R a+rX /opt/duckdb
+  && chmod -R a+rX /home/shiny/.duckdb /root/.duckdb
 
 # NOTE: there is deliberately no `chgrp -R shiny /share/github/...` step here.
 # `/share` is a RUNTIME bind mount (see docker-compose.yml) and does not exist
