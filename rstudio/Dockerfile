@@ -63,14 +63,30 @@ RUN install2.r --error \
 #
 #   crazycapivara/h3-r@6b658e8 (3.7.2), yogevherz/plotme@ff9ea91 (0.1.0) — not on CRAN.
 #
-# msens is intentionally NOT pinned: release_marine-atlas.qmd reinstalls it from
-# the server checkout on every deploy, so a pin here would be misleading.
+# msens IS pinned, and asserted — it used to be deliberately unpinned on the
+# reasoning that "release_marine-atlas.qmd reinstalls it from the server checkout
+# on every deploy". That is true, and it is exactly the problem: any container
+# recreate BETWEEN deploys silently rolls msens back to whatever this image
+# happens to carry, with no error anywhere. That bit three times on 2026-07-28 —
+# each recreate reverted msens and took a user-facing feature down with it:
+#
+#   * 0.11.0 -> 0.10.0 twice, so `msens::drawn_features_sf()` vanished and BOTH
+#     scores apps answered "Draw a polygon on the map first." for every polygon
+#     drawn (the app's tryCatch turns the missing function into a NULL).
+#
+# The deploy still reinstalls from the checkout on top; this pin only guarantees
+# the FLOOR, so a recreate can never drop below the version the apps need.
+# Bump MSENS_REF + MSENS_MIN together when an app starts needing something newer.
 #
 # `mapgl` is deliberately NOT in this RUN — see the next one for why.
+ARG MSENS_REF=a10d7da6aaeaad650341d5468330d2e37a08dc99
+ARG MSENS_MIN=0.12.0
 RUN installGithub.r \
-  MarineSensitivity/msens qfes/rdeck \
+  MarineSensitivity/msens@$MSENS_REF qfes/rdeck \
   crazycapivara/h3-r@6b658e832f6907581d9d5c5296d611c4e4cf372a \
   yogevherz/plotme@ff9ea913949b4274cac244c5ecb6061c92ad2556 \
+  && R -e 'stopifnot(packageVersion("msens") >= Sys.getenv("MSENS_MIN")); \
+           stopifnot("drawn_features_sf" %in% getNamespaceExports("msens"))' \
   && rm -rf /tmp/downloaded_packages   # clean R package cache
 
 # mapgl LAST, in its OWN layer, so nothing above can walk it back.
