@@ -19,7 +19,16 @@ services:
     build: ./rstudio
     environment:
       ROOT: 'true'
-      USER: admin
+      # DEFAULT_USER, not USER: rocker's /rocker_scripts/init_userconf.sh opens with
+      #   DEFAULT_USER=${DEFAULT_USER:-rstudio}
+      #   USER=${DEFAULT_USER}
+      # so a `USER:` set here is CLOBBERED on line 6 before it is ever read. This
+      # said `USER: admin`, so no admin account was ever created — only `rstudio` —
+      # and logging into rstudio.marinesensitivity.org as admin failed with
+      # "Incorrect or invalid username/password" while the password was perfectly
+      # correct. Takes effect on the next container recreate; until then the login
+      # is `rstudio`.
+      DEFAULT_USER: admin
       PASSWORD: ${PASSWORD}
       ADD: shiny
       # usage-log Sheet endpoint (Apps Script /exec) for the Shiny apps'
