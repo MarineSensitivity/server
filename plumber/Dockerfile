@@ -48,10 +48,23 @@ RUN R -e 'if (!nzchar(Sys.which("lualatex"))) tinytex::install_tinytex()'
 
 # install msens from GitHub (provides cells_in_polygon, scores_for_cells,
 # species_for_cells, plot_flower, tbl_species, ggmap_areas used by report.qmd).
-# The post-install `library(msens)` check fails the build loudly if the
-# install silently fails — otherwise a bad layer gets cached as successful
-# and the running container silently has no msens.
-RUN R -e 'remotes::install_github("MarineSensitivity/msens", upgrade = FALSE); library(msens)' \
+#
+# PINNED BY COMMIT, and version-asserted. Left unpinned, this layer cached
+# indefinitely: the running container sat on **msens 0.5.0** while the package
+# moved on to 0.12.0, which broke the v8 API twice over, silently —
+#   * no serve.duckdb fallback in sdm_db_path() (0.9.1), so /report?ver=v8 died
+#     with `Cannot open database "/share/data/big/v8/sdm.duckdb"`;
+#   * no cell_model support (0.9.0), so drawn areas would scan the
+#     mdl_id-partitioned model_cell instead of the cell-oriented surface.
+# Bumping MSENS_REF invalidates the layer, so a rebuild can never quietly serve
+# a stale msens, and the version assertion fails the BUILD rather than caching a
+# bad layer as successful. Keep MSENS_MIN at the version whose API report.qmd
+# actually needs (0.12.0 = cells_in_polygon(poly, con) grid dispatch).
+ARG MSENS_REF=a10d7da6aaeaad650341d5468330d2e37a08dc99
+ARG MSENS_MIN=0.12.0
+RUN R -e 'remotes::install_github(paste0("MarineSensitivity/msens@", Sys.getenv("MSENS_REF")), upgrade = FALSE); \
+          library(msens); \
+          stopifnot(packageVersion("msens") >= Sys.getenv("MSENS_MIN"))' \
  && rm -rf /tmp/downloaded_packages/
 
 EXPOSE 8888
