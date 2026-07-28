@@ -61,21 +61,40 @@ RUN install2.r --error \
 # GitHub-only packages, pinned to exact commits so a rebuild is reproducible
 # (a bare `user/repo` tracks a moving default branch).
 #
-#   bbest/mapgl@1e52f60 — the head of walkerke/mapgl PR #211,
-#     "fix(h3t): render H3 hexagons crossing the antimeridian". This is a FORK,
-#     not walkerke/mapgl, because that fix is NOT yet merged upstream; the h3t
-#     hexagon layers in the species app render wrongly without it. When PR #211
-#     lands, switch this back to a released walkerke/mapgl version and drop the
-#     fork. See https://github.com/walkerke/mapgl/pull/211
 #   crazycapivara/h3-r@6b658e8 (3.7.2), yogevherz/plotme@ff9ea91 (0.1.0) — not on CRAN.
 #
 # msens is intentionally NOT pinned: release_marine-atlas.qmd reinstalls it from
 # the server checkout on every deploy, so a pin here would be misleading.
+#
+# `mapgl` is deliberately NOT in this RUN — see the next one for why.
 RUN installGithub.r \
   MarineSensitivity/msens qfes/rdeck \
-  bbest/mapgl@1e52f603c3a41cfd36c2049b13f8f6281c4580ba \
   crazycapivara/h3-r@6b658e832f6907581d9d5c5296d611c4e4cf372a \
   yogevherz/plotme@ff9ea913949b4274cac244c5ecb6061c92ad2556 \
+  && rm -rf /tmp/downloaded_packages   # clean R package cache
+
+# mapgl LAST, in its OWN layer, so nothing above can walk it back.
+#
+#   bbest/mapgl@484e869f — branch `fix/h3t-antimeridian`, i.e. walkerke/mapgl
+#     `main` merged in (0 commits behind) PLUS "fix(h3t): render H3 hexagons
+#     crossing the antimeridian" (1e52f60). This is a FORK BRANCH, not the fork's
+#     default branch: bbest/mapgl `main` is a plain sync of upstream and does NOT
+#     carry the fix. Without it the h3t hexagon layers (h3-db globe, species app)
+#     render a gap down the antimeridian. When PR #211 lands, switch this back to a
+#     released walkerke/mapgl version and drop the fork.
+#     See https://github.com/walkerke/mapgl/pull/211
+#
+# WHY ITS OWN LAYER, AFTER msens: msens's DESCRIPTION carries a `Remotes:` line for
+# mapgl, which remotes resolves whenever msens is installed from GitHub. While that
+# line read `walkerke/mapgl`, installing msens pulled UPSTREAM mapgl over this pin —
+# and it is not only this build that installs msens: twelve Shiny apps
+# `librarian::shelf(MarineSensitivity/msens)` at startup, as the `shiny` user, so a
+# running container silently reverted to upstream mapgl a day after the image was
+# built (observed 2026-07-26). msens `Remotes:` now names this same commit, so the
+# two agree; keeping mapgl in a later layer means a future drift there cannot
+# silently undo the pin at build time. Bump BOTH together.
+RUN installGithub.r \
+  bbest/mapgl@484e869f93af01bf396cbba7f074f0a3c53eba6d \
   && rm -rf /tmp/downloaded_packages   # clean R package cache
 
 # DuckDB extensions, baked into the image at a PERMANENT path.
