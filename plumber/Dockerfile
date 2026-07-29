@@ -60,8 +60,8 @@ RUN R -e 'if (!nzchar(Sys.which("lualatex"))) tinytex::install_tinytex()'
 # a stale msens, and the version assertion fails the BUILD rather than caching a
 # bad layer as successful. Keep MSENS_MIN at the version whose API report.qmd
 # actually needs (0.12.1 = cells_in_polygon(poly, con) grid dispatch, S4-safe).
-ARG MSENS_REF=1446d10891b0f4e374ee85d882e0b0995b776ab1
-ARG MSENS_MIN=0.13.0
+ARG MSENS_REF=742eb68fc1e38fc0ddb0931d0a73b2f0a4bcb8d3
+ARG MSENS_MIN=0.13.1
 RUN R -e 'remotes::install_github(paste0("MarineSensitivity/msens@", Sys.getenv("MSENS_REF")), upgrade = FALSE); \
           library(msens); \
           stopifnot(packageVersion("msens") >= Sys.getenv("MSENS_MIN"))' \
