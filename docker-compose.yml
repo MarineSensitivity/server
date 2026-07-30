@@ -235,9 +235,7 @@ services:
   # is not something to serve from. Treat this as a trial surface, not load-bearing.
   stac-api:
     container_name: stac-api
-    build:
-      context: https://github.com/Healy-Hyperspatial/stac-fastapi-duckdb.git#359aa2a0f1a94b77e592f3bd33c4d28537d31949
-      dockerfile: dockerfiles/Dockerfile
+    build: ./stac-api          # upstream pinned + ST_Intersects(WKB) patch; see its Dockerfile
     environment:
       APP_HOST:          0.0.0.0
       APP_PORT:          "8084"
