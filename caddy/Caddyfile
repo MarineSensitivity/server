@@ -69,6 +69,12 @@ pgadmin.marinesensitivity.org {
 #   reverse_proxy rest:3000
 # }
 
+# searchable STAC API (one Item per model) — complements the STATIC catalog served
+# from file.marinesensitivity.org/stac, which stays exactly as it is.
+stac-api.marinesensitivity.org {
+	reverse_proxy stac-api:8084
+}
+
 rstudio.marinesensitivity.org {
 	reverse_proxy rstudio:8787
 }

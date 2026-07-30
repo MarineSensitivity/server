@@ -214,6 +214,46 @@ services:
       - "8001:8000"
     restart: always
 
+  # stac-api: a SEARCHABLE STAC API with one Item per model, complementing (not
+  # replacing) the static catalog at file.marinesensitivity.org/stac.
+  #
+  # The static catalog is dataset-level: one Item per collection whose assets are
+  # S3 PREFIXES (…/native/am_native/, which 403s) and whose bbox is the whole
+  # dataset envelope — so it can answer neither "the asset for this model" nor
+  # "which models cover this area". This serves 25,643 per-model Items with real
+  # asset hrefs and real footprints.
+  #
+  # Backend reads stac-geoparquet via DuckDB — the same Parquet-on-DuckDB shape as
+  # the rest of this stack. Items and collection.json come from the tree that
+  # workflows/publish_stac_api.qmd builds and rsyncs; PARQUET_URLS_JSON (collection
+  # id -> parquet path) is passed by that notebook from parquet_urls.json, so
+  # adding a dataset needs no edit here.
+  #
+  # Pinned to an exact upstream commit built straight from GitHub — the project is
+  # marked EXPERIMENTAL by both its repo and the stac-fastapi docs (pgstac and
+  # Elasticsearch are the production-ready backends), so a moving default branch
+  # is not something to serve from. Treat this as a trial surface, not load-bearing.
+  stac-api:
+    container_name: stac-api
+    build:
+      context: https://github.com/Healy-Hyperspatial/stac-fastapi-duckdb.git#359aa2a0f1a94b77e592f3bd33c4d28537d31949
+      dockerfile: dockerfiles/Dockerfile
+    environment:
+      APP_HOST:          0.0.0.0
+      APP_PORT:          "8084"
+      ENVIRONMENT:       production
+      WEB_CONCURRENCY:   "4"
+      BACKEND:           duckdb
+      STAC_FILE_PATH:    /app/stac_collections
+      PARQUET_URLS_JSON: ${PARQUET_URLS_JSON}
+    volumes:
+      # read-only: the API must never mutate the published catalog
+      - /share/data/derived/stac-api/v8:/app/stac_collections:ro
+    ports:
+      - "8085:8084"
+    restart: unless-stopped
+    command: bash -c "python -m stac_fastapi.duckdb.app"
+
   titilecache:
     container_name: titilecache
     image: varnish:latest # 7.4.2  # last updated: 2023-12-26
