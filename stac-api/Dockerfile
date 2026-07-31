@@ -35,5 +35,26 @@ RUN sed -i 's/ST_Intersects(geometry,/ST_Intersects(ST_GeomFromWKB(geometry),/g'
 
 RUN pip install --no-cache-dir -e .[dev,server]
 
+# PATCH 2 — spec-conformant paging fields. stac_fastapi_core (6.2.1) builds its
+# ItemCollection with `numReturned=` / `numMatched=`, but the very TypedDict it
+# constructs, stac_fastapi.types.stac.ItemCollection, declares `numberReturned` /
+# `numberMatched` — the names STAC API and OGC API Features require. A TypedDict
+# does not validate kwargs at runtime, so the wrong names pass through silently
+# and every response carries them:
+#     {"numReturned": 10, "numMatched": 16818}
+# Paging still works (clients follow rel="next"), but a strict client reading
+# numberMatched sees nothing — it cannot tell 16,818 items from 10.
+#
+# Applied AFTER pip install because it lives in the installed DEPENDENCY, not in
+# the cloned backend. Asserted both ways — new names present, old ones entirely
+# gone — so a rename upstream fails the BUILD instead of quietly reverting this.
+# Worth sending upstream alongside the ST_Intersects patch.
+RUN CORE="$(python -c 'import stac_fastapi.core.core as m; print(m.__file__)')" && \
+    sed -i 's/numReturned=/numberReturned=/g; s/numMatched=/numberMatched=/g' "$CORE" && \
+    test "$(grep -c 'numberReturned=' "$CORE")" -ge 2 && \
+    test "$(grep -c 'numberMatched='  "$CORE")" -ge 2 && \
+    test "$(grep -c 'numReturned='    "$CORE")" -eq 0 && \
+    test "$(grep -c 'numMatched='     "$CORE")" -eq 0
+
 EXPOSE 8084
 CMD ["python", "-m", "stac_fastapi.duckdb.app"]
