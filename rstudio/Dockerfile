@@ -20,7 +20,17 @@ RUN usermod -aG staff shiny
 RUN apt-get update -qq && apt-get install -y --no-install-recommends \
   curl git-core libssl-dev libcurl4-gnutls-dev libsodium-dev libxml2-dev \
   libpq-dev \
+  awscli \
   && rm -rf /var/lib/apt/lists/*       # clean apt cache
+
+# `awscli`: release notebooks rendered INSIDE this container push to S3. Without
+# it they die at the publish step with the unhelpful
+# `system2: error in running command: 'Function not implemented'`, having already
+# done all the work. The host has aws, the container did not.
+# NOTE: takes effect on the next container RECREATE -- which also resets this
+# container's R library (it is not on a volume), so the apps need msens et al
+# reinstalled afterwards. Until then, notebooks stage locally and print the
+# host-side command.
 
 # NOTE: `mapgl` is deliberately NOT listed here — the apps need the bbest/mapgl
 # FORK (see installGithub.r below), and a CRAN copy installed first would only be
