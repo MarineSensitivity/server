@@ -61,6 +61,79 @@ file.marinesensitivity.org {
 	}
 }
 
+# Browsable front door for the PUBLIC S3 bucket.
+#
+# Why this exists: S3 serves OBJECTS, not directories. A URL ending in "/" 404s
+# unless an object literally has that key, and anonymous ListBucket is DENIED on
+# this bucket (403 AccessDenied), so a browser cannot enumerate anything. The
+# workflows notebook publish_storage_index.qmd generates a real index.html per
+# directory; this vhost rewrites folder URLs to them:
+#
+#   storage.marinesensitivity.org/marine-atlas/v8/  -> .../v8/index.html
+#   storage.marinesensitivity.org/marine-atlas/latest.txt -> the object
+#
+# Named "storage" rather than "s3" so the URL survives a move to another
+# provider.
+storage.marinesensitivity.org {
+	encode zstd gzip
+
+	log {
+		output file /share/logs/caddy/storage.log {
+			roll_size 64MiB
+			roll_keep 14
+			roll_keep_for 2160h
+		}
+		format json
+	}
+
+	# robots.txt inline, BEFORE the bucket handler, so it cannot be lost by an
+	# index regeneration. The catalog pages are welcome in search results; the
+	# objects behind them are not. Every byte is PROXIED through this server
+	# (reverse_proxy, not a redirect), and the tree is 18 GB across ~90,000
+	# objects, so a crawl would be billed as VM egress.
+	handle /robots.txt {
+		header Content-Type "text/plain; charset=utf-8"
+		respond `# Catalog pages: crawl away. Data objects: please do not.
+User-agent: *
+Crawl-delay: 10
+Disallow: /*.tif$
+Disallow: /*.parquet$
+Disallow: /*.duckdb$
+Disallow: /*.pmtiles$
+Disallow: /*.gz$
+Disallow: /*.zip$
+` 200
+	}
+
+	# ONLY the published atlas. The same bucket holds backups/ -- including a
+	# multi-GB database dump -- which is technically public but must not be
+	# advertised or reachable here, even by exact path. This allow-list is the
+	# server-side half of the restriction the index generator applies.
+	@atlas path_regexp atlas ^/marine-atlas(/|$)
+	handle @atlas {
+		# folder URL -> the index.html object standing in for a listing
+		@dir path_regexp dir ^(.*)/$
+		rewrite @dir {re.dir.1}/index.html
+		reverse_proxy https://s3.us-east-1.amazonaws.com {
+			header_up Host s3.us-east-1.amazonaws.com
+			rewrite /oceanmetrics.io-public{uri}
+		}
+	}
+
+	# the bare host lands on the atlas index
+	redir / /marine-atlas/ 302
+
+	# anything else: refuse, and say where to go
+	handle {
+		header Content-Type "text/plain; charset=utf-8"
+		respond `Not found.
+
+Browsable: /marine-atlas/
+Start here: https://storage.marinesensitivity.org/marine-atlas/
+` 404
+	}
+}
+
 pgadmin.marinesensitivity.org {
 	reverse_proxy pgadmin:8088
 }
