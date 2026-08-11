@@ -79,14 +79,21 @@ RUN install2.r --error \
 #
 # If you ever install a package at runtime, add it here in the SAME change.
 #
+# 2026-08-11: `furrr` and `skimr` were exactly that -- installed ad hoc, never
+# declared, and silently lost on the next recreate. publish_native.qmd then died
+# at its FIRST chunk with "unable to install packages", because no library path
+# is writable by uid 1000 (the user release notebooks run as). Note the image
+# already carried furrr's dependencies (future/globals/listenv/parallelly) but
+# not furrr, which is the signature of a runtime install resolving deps.
+#
 # (`otel` and `snowflakeauth` could not be resolved against the old 4.4.1 snapshot
 # and briefly had to be dropped; on 4.6.1 they resolve, so full parity is restored.)
 RUN install2.r --error \
   base64url bsicons checkmate cmocean cols4all conductor crul duckdbfs dygraphs \
-  fontBitstreamVera fontLiberation fontquiver Formula future gdtools geojson geojsonio \
+  fontBitstreamVera fontLiberation fontquiver Formula furrr future gdtools geojson geojsonio \
   globals httpcode insight jose jqr leafgl leaflegend listenv litedown maptiles \
   marginaleffects otel pak parallelly protolite Rnanoflann rnaturalearth rnaturalearthdata \
-  S7 secretbase snakecase snowflakeauth spacesXYZ stringdist \
+  S7 secretbase skimr snakecase snowflakeauth spacesXYZ stringdist \
   && rm -rf /tmp/downloaded_packages   # clean R package cache
 
 # GitHub-only packages, pinned to exact commits so a rebuild is reproducible
