@@ -84,19 +84,28 @@ RUN install2.r --error \
 #     scores apps answered "Draw a polygon on the map first." for every polygon
 #     drawn (the app's tryCatch turns the missing function into a NULL).
 #
+# 2026-08-11: bumped to 0.14.0 because the apps now read the version registry --
+# atlas_manifest() for the score COGs and their build-time rescale, and
+# version_picker_html() for the header picker. Both are wrapped in tryCatch, so
+# an older msens would DEGRADE SILENTLY back to SQL-per-tile rather than error.
+# `cog_tile_url(color=)` would be worse than silent: on the old signature
+# `color` partial-matches `colormap`, so the outside-Program-Areas mask would
+# request colormap_name=#222222 and fail server-side.
+#
 # The deploy still reinstalls from the checkout on top; this pin only guarantees
 # the FLOOR, so a recreate can never drop below the version the apps need.
 # Bump MSENS_REF + MSENS_MIN together when an app starts needing something newer.
 #
 # `mapgl` is deliberately NOT in this RUN — see the next one for why.
-ARG MSENS_REF=742eb68fc1e38fc0ddb0931d0a73b2f0a4bcb8d3
-ARG MSENS_MIN=0.13.1
+ARG MSENS_REF=50ab18366473c9fcaa5d2cdf85a40f6bf0694bc2
+ARG MSENS_MIN=0.14.0
 RUN installGithub.r \
   MarineSensitivity/msens@$MSENS_REF qfes/rdeck \
   crazycapivara/h3-r@6b658e832f6907581d9d5c5296d611c4e4cf372a \
   yogevherz/plotme@ff9ea913949b4274cac244c5ecb6061c92ad2556 \
   && R -e 'stopifnot(packageVersion("msens") >= Sys.getenv("MSENS_MIN")); \
-           stopifnot("drawn_features_sf" %in% getNamespaceExports("msens"))' \
+           stopifnot(all(c("drawn_features_sf", "atlas_manifest", "version_picker_html") \
+                         %in% getNamespaceExports("msens")))' \
   && rm -rf /tmp/downloaded_packages   # clean R package cache
 
 # mapgl LAST, in its OWN layer, so nothing above can walk it back.
