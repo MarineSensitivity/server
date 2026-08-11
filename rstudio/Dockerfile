@@ -19,18 +19,23 @@ RUN usermod -aG staff shiny
 #   plumber deps; `rm` call removes `apt` cache; libpq RPostgres dep
 RUN apt-get update -qq && apt-get install -y --no-install-recommends \
   curl git-core libssl-dev libcurl4-gnutls-dev libsodium-dev libxml2-dev \
-  libpq-dev \
-  awscli \
+  libpq-dev unzip \
   && rm -rf /var/lib/apt/lists/*       # clean apt cache
 
-# `awscli`: release notebooks rendered INSIDE this container push to S3. Without
+# AWS CLI: release notebooks rendered INSIDE this container push to S3. Without
 # it they die at the publish step with the unhelpful
 # `system2: error in running command: 'Function not implemented'`, having already
-# done all the work. The host has aws, the container did not.
-# NOTE: takes effect on the next container RECREATE -- which also resets this
-# container's R library (it is not on a volume), so the apps need msens et al
-# reinstalled afterwards. Until then, notebooks stage locally and print the
-# host-side command.
+# done all the work. The host has aws; the container did not.
+#
+# Installed from Amazon's official bundle, NOT apt: this base image has no
+# `awscli` candidate (`E: Package 'awscli' has no installation candidate`), and
+# enabling universe to get a v1 package is more moving parts than a pinned,
+# self-contained v2 that Amazon supports.
+RUN curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip \
+  && unzip -q /tmp/awscliv2.zip -d /tmp \
+  && /tmp/aws/install \
+  && rm -rf /tmp/awscliv2.zip /tmp/aws \
+  && aws --version
 
 # NOTE: `mapgl` is deliberately NOT listed here — the apps need the bbest/mapgl
 # FORK (see installGithub.r below), and a CRAN copy installed first would only be
