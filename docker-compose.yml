@@ -44,6 +44,12 @@ services:
     volumes:
       - /share:/share
       - /share/shiny_apps:/srv/shiny-server
+      # Release notebooks rendered INSIDE this container publish to S3. The image
+      # carries the AWS CLI, but a CLI with no credentials just fails later and
+      # louder: `NoCredentials` at the publish step, after the build work is done.
+      # Read-only, and the container already runs as uid 1000 = host `ubuntu`,
+      # which owns these.
+      - /home/ubuntu/.aws:/home/rstudio/.aws:ro
 
   # plumber: DuckDB-backed custom API (postgres stack retired 2026-06). Serves
   # the OBIS H3 summary endpoint /h3 (obisindicators::obis_h3t_sql) from the same
