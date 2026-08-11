@@ -37,6 +37,22 @@ RUN curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -
   && rm -rf /tmp/awscliv2.zip /tmp/aws \
   && aws --version
 
+# tippecanoe: vector sources (zone layers, IUCN/FWS/NMFS ranges) are published as
+# PMTiles by build_zone_sets.qmd and publish_native.qmd, which render INSIDE this
+# container -- but tippecanoe was on NEITHER the host nor the image, so those
+# tiles could never have been rebuilt on the server at all. Not packaged for
+# Ubuntu; built from a pinned release so a rebuild is reproducible, and pinned to
+# the version used locally so tiles do not differ by where they were made.
+ARG TIPPECANOE_REF=2.79.0
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+      build-essential libsqlite3-dev zlib1g-dev \
+  && curl -fsSL "https://github.com/felt/tippecanoe/archive/refs/tags/${TIPPECANOE_REF}.tar.gz" -o /tmp/t.tgz \
+  && tar xzf /tmp/t.tgz -C /tmp \
+  && make -C "/tmp/tippecanoe-${TIPPECANOE_REF}" -j"$(nproc)" \
+  && make -C "/tmp/tippecanoe-${TIPPECANOE_REF}" install \
+  && rm -rf /tmp/t.tgz "/tmp/tippecanoe-${TIPPECANOE_REF}" /var/lib/apt/lists/* \
+  && tippecanoe --version
+
 # NOTE: `mapgl` is deliberately NOT listed here — the apps need the bbest/mapgl
 # FORK (see installGithub.r below), and a CRAN copy installed first would only be
 # overwritten.
