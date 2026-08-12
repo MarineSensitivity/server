@@ -157,6 +157,34 @@ shiny.marinesensitivity.org {
 }
 
 app.marinesensitivity.org {
+	# ---- MST app cutover -------------------------------------------------
+	#
+	# /scores and /species are now ONE app that renders any published release
+	# from ?ver=. Every former per-version instance redirects to it rather than
+	# 404ing, so old links, bookmarks and anything in a published report keep
+	# resolving — to the SAME release they always showed.
+	#
+	# The v7 apps were `mapgl` (scores) and `mapsp` (species); v1-v6 were
+	# `mapgl_v{n}` / `mapsp_v{n}`; v6 and v8 also had `scores_v{n}` /
+	# `species_v{n}` aliases. All of them land on /scores or /species with the
+	# version they represent.
+	#
+	# 301 (permanent): these instances are not coming back, and a permanent
+	# redirect lets browsers and crawlers stop asking.
+	@scores_ver path_regexp scv ^/(?:mapgl|scores)_(v[0-9]+[a-z]?)(?:/(.*))?$
+	redir @scores_ver /scores/?ver={re.scv.1} 301
+
+	@species_ver path_regexp spv ^/(?:mapsp|species)_(v[0-9]+[a-z]?)(?:/(.*))?$
+	redir @species_ver /species/?ver={re.spv.1} 301
+
+	# the unsuffixed v7 instances: `mapgl`/`mapsp` were what /scores and
+	# /species pointed at, so they carry v7 explicitly
+	@scores_v7 path_regexp sc7 ^/mapgl(?:/(.*))?$
+	redir @scores_v7 /scores/?ver=v7 301
+
+	@species_v7 path_regexp sp7 ^/mapsp(?:/(.*))?$
+	redir @species_v7 /species/?ver=v7 301
+
 	reverse_proxy rstudio:3838
 }
 
