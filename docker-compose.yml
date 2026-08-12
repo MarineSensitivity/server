@@ -205,6 +205,19 @@ services:
   # v8 parallel serving: a tiny view-only DuckDB whose model_cell is a VIEW over the
   # partitioned Parquet on S3 (marine-atlas/v8), rendered on the global [-180,180] cell COG.
   # v7 titiler above stays fully live (A/B). serve.duckdb is KB — no multi-GB rsync.
+  # Stock titiler: /cog serves the precomputed COGs every app layer now uses.
+  #
+  # The custom /msens cells factory (DuckDB query -> tile) is RETIRED but KEPT:
+  # set MSENS_FACTORY=1 to mount it for exploratory on-the-fly queries. It is off
+  # by default because nothing reaches it — the scores app's SQL fallback cannot
+  # fire (every metric on v1-v8 has a COG) and the species app's needed only the
+  # 192 taxa that now have merged COGs. Verified equivalent first: 100/105 tiles
+  # byte-identical, the rest differing by 3-6 px of 262,144 from float32 storage.
+  #
+  # Deliberately NOT proxied through titilecache (Varnish): a query-driven tile
+  # is not cache-friendly the way an immutable COG is, and caching an exploratory
+  # endpoint mostly serves stale answers to whoever is iterating on the query.
+  # The MSENS_* vars below stay so enabling the factory needs no other change.
   titiler-v8:
     container_name: titiler-v8
     build: ./titiler
