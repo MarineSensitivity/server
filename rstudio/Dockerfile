@@ -125,8 +125,8 @@ RUN install2.r --error \
 # Bump MSENS_REF + MSENS_MIN together when an app starts needing something newer.
 #
 # `mapgl` is deliberately NOT in this RUN — see the next one for why.
-ARG MSENS_REF=d1740e4ad7fd955beeea91853f4460960c37883f
-ARG MSENS_MIN=0.16.0
+ARG MSENS_REF=9049dd6553d9e8aca497d19f5aa627d4a2e87e58
+ARG MSENS_MIN=0.21.0
 RUN installGithub.r \
   MarineSensitivity/msens@$MSENS_REF qfes/rdeck \
   crazycapivara/h3-r@6b658e832f6907581d9d5c5296d611c4e4cf372a \
