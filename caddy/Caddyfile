@@ -171,19 +171,30 @@ app.marinesensitivity.org {
 	#
 	# 301 (permanent): these instances are not coming back, and a permanent
 	# redirect lets browsers and crawlers stop asking.
+	#
+	# `&{query}` IS THE POINT OF THE REDIRECT. A redir target that carries its own
+	# query string REPLACES the incoming one, so these rules used to answer
+	# /mapsp/?mdl_seq=1434 with /species/?ver=v7 -- dropping the very thing the
+	# link was about. The app then opened on its default taxon, which is why every
+	# deep link in the final report, and the ones in issue #5, silently showed the
+	# leatherback turtle. Every published per-species link is of this form, so a
+	# redirect that keeps the path and loses the id is worse than a 404: it looks
+	# like it worked (MarineSensitivity/apps#6).
+	#
+	# An empty {query} leaves a harmless trailing "&", which parses to nothing.
 	@scores_ver path_regexp scv ^/(?:mapgl|scores)_(v[0-9]+[a-z]?)(?:/(.*))?$
-	redir @scores_ver /scores/?ver={re.scv.1} 301
+	redir @scores_ver /scores/?ver={re.scv.1}&{query} 301
 
 	@species_ver path_regexp spv ^/(?:mapsp|species)_(v[0-9]+[a-z]?)(?:/(.*))?$
-	redir @species_ver /species/?ver={re.spv.1} 301
+	redir @species_ver /species/?ver={re.spv.1}&{query} 301
 
 	# the unsuffixed v7 instances: `mapgl`/`mapsp` were what /scores and
 	# /species pointed at, so they carry v7 explicitly
 	@scores_v7 path_regexp sc7 ^/mapgl(?:/(.*))?$
-	redir @scores_v7 /scores/?ver=v7 301
+	redir @scores_v7 /scores/?ver=v7&{query} 301
 
 	@species_v7 path_regexp sp7 ^/mapsp(?:/(.*))?$
-	redir @species_v7 /species/?ver=v7 301
+	redir @species_v7 /species/?ver=v7&{query} 301
 
 	reverse_proxy rstudio:3838
 }
