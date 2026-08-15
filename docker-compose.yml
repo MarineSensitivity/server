@@ -108,6 +108,9 @@ services:
           sleep 300
         done
     volumes:
+      # HOST STATE: this directory must be owned by uid 1000 (`sudo chown
+      # 1000:1000 /share/docs_preview`). Docker auto-creates a missing bind-mount
+      # source as root:root, and the sidecar then cannot write its clone.
       - /share/docs_preview:/repo
 
   # plumber: DuckDB-backed custom API (postgres stack retired 2026-06). Serves
