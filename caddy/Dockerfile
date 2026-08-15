@@ -1,5 +1,6 @@
-# pinned: `caddy:latest` moved under us once (an old cached builder produced a
-# Caddy without directives the routes file uses). Bump both tags together.
+# Pinned rather than `latest`, so a rebuild on another day produces the same
+# Caddy (the routes file leans on 2.8+ features such as `uri query`). Bump both
+# tags together.
 FROM caddy:2.11.4-builder AS builder
 # pmtiles_proxy (file.marinesensitivity.org tiles) + jwtauth: the origin-side
 # check for the signed-in preview host. Cloudflare Access sets a
