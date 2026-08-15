@@ -256,6 +256,29 @@ preview.marinesensitivity.org {
 	# the routes themselves live in a file the functional test can import too
 	# (caddy/test/run.sh) -- see it for the URL scheme: the version is the PATH
 	import /etc/caddy/preview_routes.caddy
+
+	# jwtauth answers a bare 401 with an EMPTY body -- a blank page in a browser,
+	# indistinguishable from "broken". Say what this host is instead. (Cloudflare
+	# Access intercepts before the origin, so once it is in front a human never
+	# sees this; it is what a request that BYPASSED Access gets.)
+	handle_errors {
+		@unauth expression {http.error.status_code} == 401
+		handle @unauth {
+			header Content-Type "text/html; charset=utf-8"
+			respond <<HTML
+				<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex">
+				<title>Marine Sensitivity — preview (sign-in required)</title>
+				<style>body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:4rem auto;padding:0 1.25rem}</style>
+				<h1>Marine Sensitivity — preview</h1>
+				<p>This host serves <b>restricted, pre-release</b> versions of the apps and documentation
+				to invited reviewers, and requires sign-in through the project's access gateway —
+				which is not yet in front of this address, so nothing here can be viewed at the moment.</p>
+				<p>Public releases: <a href="https://app.marinesensitivity.org/scores/">Scores</a> ·
+				<a href="https://app.marinesensitivity.org/species/">Species</a> ·
+				<a href="https://marinesensitivity.org/docs/">Documentation</a>.</p>
+				HTML 401
+		}
+	}
 }
 
 shiny.oceanmetrics.io {
