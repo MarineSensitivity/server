@@ -8,6 +8,14 @@ services:
       - 80:80
       - 443:443
     restart: unless-stopped
+    environment:
+      # Cloudflare Access team domain + application AUD tag for the signed-in
+      # preview.marinesensitivity.org vhost (caddy/Caddyfile jwtauth). Set both
+      # in the server .env once the Access application exists
+      # (server/cloudflare/). Unset, the vhost fails CLOSED: the defaults match
+      # no real JWT, so every request there gets 401 rather than the app.
+      CF_ACCESS_TEAM: ${CF_ACCESS_TEAM:-unconfigured}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-unconfigured}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile
       - /share:/share
@@ -53,12 +61,54 @@ services:
     volumes:
       - /share:/share
       - /share/shiny_apps:/srv/shiny-server
+      # Shiny Server config with a SECOND server block (:3839) for the preview
+      # instance -- same app code, MS_PREVIEW=1 -- that only Caddy's signed-in
+      # preview.marinesensitivity.org vhost proxies to. Single-file bind mount:
+      # a change needs `docker compose restart rstudio` (inode rule, as Caddyfile).
+      - ./rstudio/shiny-server.conf:/etc/shiny-server/shiny-server.conf:ro
+      # the preview instance's site_dir: 3-line wrapper app.R per app that sets
+      # MS_PREVIEW=1 and shinyAppDir()s the real app; `touch restart.txt` here
+      # reloads it (DEPLOY_APPS does). Not published as a port on purpose.
+      - ./rstudio/shiny_apps_preview:/srv/shiny-server-preview
       # Release notebooks rendered INSIDE this container publish to S3. The image
       # carries the AWS CLI, but a CLI with no credentials just fails later and
       # louder: `NoCredentials` at the publish step, after the build work is done.
       # Read-only, and the container already runs as uid 1000 = host `ubuntu`,
       # which owns these.
       - /home/ubuntu/.aws:/home/rstudio/.aws:ro
+
+  # docs-preview: the rendered books of RESTRICTED docs releases. GitHub Pages
+  # cannot be gated, so the docs CI publishes restricted versions to the
+  # `gh-pages-preview` branch (public versions go to gh-pages as always) and
+  # Caddy's signed-in preview vhost serves this clone at /docs/{ver}/. The
+  # sidecar keeps the clone current by polling -- no inbound secret, no manual
+  # step; a docs push shows up within 5 min. Runs as uid 1000 (= host `ubuntu`)
+  # so nothing under /share ends up root-owned. The branch may not exist yet on
+  # a fresh install: the loop just retries.
+  docs-preview:
+    container_name: docs-preview
+    image: alpine/git:v2.49.1
+    restart: unless-stopped
+    user: "1000:1000"
+    environment:
+      HOME: /tmp
+      GIT_TERMINAL_PROMPT: "0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        REPO=https://github.com/MarineSensitivity/docs.git
+        while true; do
+          if [ ! -d /repo/.git ]; then
+            git clone --quiet --branch gh-pages-preview --single-branch "$$REPO" /repo \
+              && echo "cloned gh-pages-preview" \
+              || echo "clone failed (gh-pages-preview may not exist yet); retrying in 5 min"
+          else
+            git -C /repo pull --ff-only --quiet || echo "pull failed; retrying in 5 min"
+          fi
+          sleep 300
+        done
+    volumes:
+      - /share/docs_preview:/repo
 
   # plumber: DuckDB-backed custom API (postgres stack retired 2026-06). Serves
   # the OBIS H3 summary endpoint /h3 (obisindicators::obis_h3t_sql) from the same

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Marine Sensitivity — preview (restricted releases)</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 52rem; margin: 3rem auto; padding: 0 1.25rem; }
+  h1 { font-size: 1.5rem; margin-bottom: .25rem; }
+  .sub { opacity: .75; margin-top: 0; }
+  .badge { display: inline-block; font-size: .75rem; padding: .1rem .5rem; border-radius: .5rem; background: #f0ad4e; color: #222; vertical-align: middle; }
+  ul.releases { list-style: none; padding: 0; }
+  ul.releases > li { border: 1px solid rgba(128,128,128,.35); border-radius: .5rem; padding: .9rem 1.1rem; margin: .8rem 0; }
+  ul.releases b { font-size: 1.15rem; }
+  .links a { margin-right: 1.25rem; }
+  .muted { opacity: .7; font-size: .9rem; }
+  footer { margin-top: 3rem; font-size: .85rem; opacity: .7; }
+</style>
+</head>
+<body>
+<h1>Marine Sensitivity <span class="badge">PREVIEW</span></h1>
+<p class="sub">Restricted, pre-release versions of the apps and documentation, for reviewers.
+Everything else about the toolkit is public at
+<a href="https://marinesensitivity.org/">marinesensitivity.org</a>.</p>
+
+<div id="out"><p class="muted">Loading the version registry…</p></div>
+
+<footer>
+  What is shown here is <em>under review</em>: methods, datasets and numbers may change before release.
+  Please do not redistribute. Public releases: <a href="https://app.marinesensitivity.org/scores/">scores</a> ·
+  <a href="https://app.marinesensitivity.org/species/">species</a> ·
+  <a href="https://marinesensitivity.org/docs/">docs</a>.
+</footer>
+
+<script>
+(function () {
+  // The SAME versions.json the pipeline, apps and docs read (served with
+  // Access-Control-Allow-Origin: *), so this page cannot disagree with them
+  // about which releases exist or which are restricted. `access` may be absent
+  // in an older registry: derive it the way msens::atlas_versions() does.
+  var REGISTRY = "https://s3.us-east-1.amazonaws.com/oceanmetrics.io-public/marine-atlas/versions.json";
+  var out = document.getElementById("out");
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) {
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  function access(v) { return v.access || (v.status === "prerelease" ? "restricted" : "public"); }
+
+  fetch(REGISTRY, { cache: "no-cache" })
+    .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(function (j) {
+      var versions = ((j && j.versions) || j || []).slice()
+        .sort(function (a, b) { return String(b.released || b.ver).localeCompare(String(a.released || a.ver)); });
+      var restricted = versions.filter(function (v) { return access(v) === "restricted"; });
+      if (!restricted.length) {
+        out.innerHTML = "<p>No release is currently restricted — every published version is public.</p>";
+        return;
+      }
+      var html = "<ul class='releases'>";
+      restricted.forEach(function (v) {
+        var ver = esc(v.ver);
+        html += "<li><b>" + ver + "</b>" +
+          (v.title ? " — " + esc(v.title) : "") +
+          " <span class='muted'>(" + esc(v.status) + (v.released ? " · " + esc(v.released) : "") + ")</span>" +
+          "<div class='links'>" +
+          "<a href='/scores/?ver=" + ver + "'>Scores app</a>" +
+          "<a href='/species/?ver=" + ver + "'>Species app</a>" +
+          "<a href='/docs/" + ver + "/'>Documentation</a>" +
+          "</div></li>";
+      });
+      html += "</ul>";
+      var pub = versions.filter(function (v) { return access(v) === "public"; }).map(function (v) { return esc(v.ver); });
+      if (pub.length) html += "<p class='muted'>Public releases (" + pub.join(", ") + ") are served from the public hosts linked below.</p>";
+      out.innerHTML = html;
+    })
+    .catch(function (e) {
+      out.innerHTML = "<p class='muted'>Could not read the version registry (" + esc(e.message) + "). " +
+        "The apps are still reachable at <a href='/scores/'>/scores/</a> and <a href='/species/'>/species/</a> with <code>?ver=</code>.</p>";
+    });
+})();
+</script>
+</body>
+</html>
