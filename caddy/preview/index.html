@@ -63,8 +63,8 @@ Everything else about the toolkit is public at
           (v.title ? " — " + esc(v.title) : "") +
           " <span class='muted'>(" + esc(v.status) + (v.released ? " · " + esc(v.released) : "") + ")</span>" +
           "<div class='links'>" +
-          "<a href='/scores/?ver=" + ver + "'>Scores app</a>" +
-          "<a href='/species/?ver=" + ver + "'>Species app</a>" +
+          "<a href='/" + ver + "/scores/'>Scores app</a>" +
+          "<a href='/" + ver + "/species/'>Species app</a>" +
           "<a href='/docs/" + ver + "/'>Documentation</a>" +
           "</div></li>";
       });
@@ -75,7 +75,7 @@ Everything else about the toolkit is public at
     })
     .catch(function (e) {
       out.innerHTML = "<p class='muted'>Could not read the version registry (" + esc(e.message) + "). " +
-        "The apps are still reachable at <a href='/scores/'>/scores/</a> and <a href='/species/'>/species/</a> with <code>?ver=</code>.</p>";
+        "The apps live at <code>/{version}/scores/</code> and <code>/{version}/species/</code>, the docs at <code>/docs/{version}/</code>.</p>";
     });
 })();
 </script>

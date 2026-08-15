@@ -18,6 +18,10 @@ services:
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-unconfigured}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      # the preview host's routes, in their own file so caddy/test/run.sh can
+      # exercise the very same file behind a test jwtauth (single-file bind
+      # mount, same restart rule as the Caddyfile)
+      - ./caddy/preview_routes.caddy:/etc/caddy/preview_routes.caddy
       - /share:/share
       - /share/caddy/data:/data
       - /share/caddy/config:/config
@@ -54,6 +58,13 @@ services:
       # events. The apps hold no credential — the endpoint is the whole secret,
       # so it belongs in .env (untracked), never in the app source.
       MSENS_LOG_URL: ${MSENS_LOG_URL:-}
+      # signs the version token a Shiny page embeds so the session renders the
+      # version its page was served for (msens::ver_token_*). Set in .env
+      # (`openssl rand -hex 32`); reaches the app processes via rocker's
+      # Renviron.site. Unset, msens uses a per-process random secret, which is
+      # still correct -- only a session straddling a process restart is asked
+      # to reload.
+      MS_TOKEN_SECRET: ${MS_TOKEN_SECRET:-}
     ports:
       - 8787:8787  # rstudio
       - 3838:3838  # shiny

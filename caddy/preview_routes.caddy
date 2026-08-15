@@ -1,0 +1,74 @@
+# preview_routes.caddy — the URL surface of the signed-in preview host.
+#
+# Imported by the preview.marinesensitivity.org vhost in the Caddyfile AND by
+# caddy/test/preview_routes.test.Caddyfile (a throwaway, HTTP-only caddy with a
+# TEST HS256 jwtauth in place of Cloudflare's JWKS), so what caddy/test/run.sh
+# proves is exactly what production runs. Everything here executes AFTER the
+# vhost's jwtauth: an unauthenticated request never reaches these routes.
+#
+# THE VERSION IS THE PATH. Cloudflare Access scopes its per-version reviewer
+# policies by hostname + path (never by query string), so a restricted release
+# lives at /{ver}/scores/, /{ver}/species/ and /docs/{ver}/ -- one Access
+# application per version (server/cloudflare/access.sh) -- and never at
+# /scores/?ver=. The path prefix is stripped here and `ver` is FORCED into the
+# query for the app (msens::atlas_resolve_ver on the preview instance); the app
+# then binds the session to that version with a signed token (msens::ver_token_*),
+# because everything the client's JavaScript sends over the websocket is
+# forgeable and a reviewer allowed on v9 must not be able to steer the shared
+# preview process to v10.
+
+# a reviewer's page must never be indexed
+header X-Robots-Tag "noindex, nofollow"
+
+# --- the apps: /{ver}/{app}/... -> rstudio:3839 /{app}/...?ver={ver} -------
+# /v9/scores (no slash) -> /v9/scores/, so the app's relative asset and sockjs
+# URLs resolve under the version prefix
+@vapp_noslash path_regexp vns ^/(v[0-9]+[a-z]?)/(scores|species)$
+redir @vapp_noslash {path}/?{query} 308
+
+@vapp path_regexp vapp ^/(v[0-9]+[a-z]?)/(scores|species)/(.*)$
+handle @vapp {
+	# `route`: these run in THIS order, whatever the global directive order says
+	route {
+		# the version is the path; any ?ver= a client sends is overridden. Other
+		# params (Shiny's session/dataobj `w`/`nonce`, the species app's
+		# ?mdl_key= deep links) are kept.
+		query ver {re.vapp.1}
+		# strip the version prefix; a rewrite without `?` retains the query
+		rewrite * /{re.vapp.2}/{re.vapp.3}
+		# X-MS-User: the verified identity (jwtauth's user claim) for the app's
+		# PREVIEW badge -- set, never appended, so a client cannot supply it
+		reverse_proxy rstudio:3839 {
+			header_up X-MS-User {http.auth.user.id}
+		}
+	}
+}
+
+# --- the pre-path spelling ---------------------------------------------------
+# /scores/?ver=v9 -> /v9/scores/ ; /scores/ alone -> the landing page. NEVER
+# proxied: an unversioned path would sit outside every per-version Access
+# policy, i.e. any signed-in reviewer could reach any restricted release.
+@vquery_noslash {
+	path /scores /species
+	query ver=*
+}
+redir @vquery_noslash /{query.ver}{path}/ 302
+@vquery_slash {
+	path /scores/ /species/
+	query ver=*
+}
+redir @vquery_slash /{query.ver}{path} 302
+@oldapp path /scores /scores/* /species /species/*
+redir @oldapp / 302
+
+# --- restricted docs: /docs/{ver}/... -> the gh-pages-preview clone ---------
+handle_path /docs/* {
+	root * /share/docs_preview
+	file_server
+}
+
+# --- landing page: lists the restricted releases from versions.json --------
+handle {
+	root * /share/github/MarineSensitivity/server/caddy/preview
+	file_server
+}

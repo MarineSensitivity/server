@@ -221,11 +221,14 @@ app.marinesensitivity.org {
 #      this box without going through Access (origin IP, wrong hostname, a
 #      forged header) has no valid JWT and gets 401 -- so proxying only this
 #      hostname is safe.
-#   3. What is behind it: the PREVIEW Shiny Server instance (rstudio:3839, the
-#      same app code as /scores + /species with MS_PREVIEW=1 -- see
-#      rstudio/shiny-server.conf), the rendered books of restricted docs
-#      versions (docs CI publishes those to the gh-pages-preview branch, cloned
-#      at /share/docs_preview by the docs-preview sidecar), and a landing page.
+#   3. What is behind it (caddy/preview_routes.caddy): the PREVIEW Shiny Server
+#      instance (rstudio:3839, the same app code as /scores + /species with
+#      MS_PREVIEW=1 -- see rstudio/shiny-server.conf) at /{ver}/scores/ and
+#      /{ver}/species/ -- THE VERSION IS THE PATH, so Access can hold one
+#      reviewer policy per version -- the rendered books of restricted docs
+#      versions at /docs/{ver}/ (docs CI publishes those to the gh-pages-preview
+#      branch, cloned at /share/docs_preview by the docs-preview sidecar), and a
+#      landing page.
 #
 # CF_ACCESS_TEAM / CF_ACCESS_AUD come from the server .env. Their DEFAULT is a
 # value nothing can match, so an unconfigured deploy fails CLOSED (401 for
@@ -240,8 +243,6 @@ preview.marinesensitivity.org {
 		}
 		format json
 	}
-	# a reviewer's page must never be indexed even if a crawler ever gets a token
-	header X-Robots-Tag "noindex, nofollow"
 
 	jwtauth {
 		jwk_url https://{$CF_ACCESS_TEAM:unconfigured}.cloudflareaccess.com/cdn-cgi/access/certs
@@ -252,28 +253,9 @@ preview.marinesensitivity.org {
 		user_claims email
 	}
 
-	# restricted docs releases: /docs/{ver}/... -> /share/docs_preview/{ver}/...
-	handle_path /docs/* {
-		root * /share/docs_preview
-		file_server
-	}
-
-	# the apps: the PREVIEW Shiny Server instance. X-MS-User is the verified
-	# identity (email claim) for the badge -- overwritten, never appended, so a
-	# client cannot supply it.
-	@apps path /scores /scores/* /species /species/*
-	handle @apps {
-		reverse_proxy rstudio:3839 {
-			header_up X-MS-User {http.auth.user.id}
-		}
-	}
-
-	# landing page: lists the restricted releases from versions.json (JS), so
-	# nothing version-specific is hardcoded here
-	handle {
-		root * /share/github/MarineSensitivity/server/caddy/preview
-		file_server
-	}
+	# the routes themselves live in a file the functional test can import too
+	# (caddy/test/run.sh) -- see it for the URL scheme: the version is the PATH
+	import /etc/caddy/preview_routes.caddy
 }
 
 shiny.oceanmetrics.io {

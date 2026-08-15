@@ -125,8 +125,8 @@ RUN install2.r --error \
 # Bump MSENS_REF + MSENS_MIN together when an app starts needing something newer.
 #
 # `mapgl` is deliberately NOT in this RUN — see the next one for why.
-ARG MSENS_REF=76f8094bda9844a189e4dd5ac35ec25bd1164f3f
-ARG MSENS_MIN=0.30.0
+ARG MSENS_REF=61ed8819da754f3e0a80f4fc485ca535aa10bd53
+ARG MSENS_MIN=0.31.0
 RUN installGithub.r \
   MarineSensitivity/msens@$MSENS_REF qfes/rdeck \
   crazycapivara/h3-r@6b658e832f6907581d9d5c5296d611c4e4cf372a \
@@ -134,7 +134,8 @@ RUN installGithub.r \
   && R -e 'stopifnot(packageVersion("msens") >= Sys.getenv("MSENS_MIN")); \
            stopifnot(all(c("drawn_features_sf", "atlas_manifest", "version_picker_html", \
                            "assign_mdl_id", "dataset_is_scored", "sdm_cols", \
-                           "sdm_val_col", "atlas_allow_access", "atlas_is_preview") \
+                           "sdm_val_col", "atlas_allow_access", "atlas_is_preview", \
+                           "ver_token_sign", "ver_token_verify", "preview_app_url") \
                          %in% getNamespaceExports("msens")))' \
   && rm -rf /tmp/downloaded_packages   # clean R package cache
 

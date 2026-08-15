@@ -1,0 +1,20 @@
+# Throwaway config for caddy/test/run.sh: the REAL preview routes behind a TEST
+# jwtauth (HS256, the caddy-jwt README's sample key + token) instead of
+# Cloudflare's JWKS, HTTP-only on :8080. Never served in production.
+{
+	order jwtauth before basic_auth
+	auto_https off
+	admin off
+}
+
+:8080 {
+	jwtauth {
+		sign_key TkZMNSowQmMjOVU2RUB0bm1DJkU3U1VONkd3SGZMbVk=
+		sign_alg HS256
+		from_header Cf-Access-Jwt-Assertion
+		issuer_whitelist https://api.example.com
+		audience_whitelist https://api.example.io
+		user_claims username
+	}
+	import /etc/caddy/preview_routes.caddy
+}
