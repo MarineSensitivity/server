@@ -1,4 +1,6 @@
-FROM caddy:builder AS builder
+# pinned: `caddy:latest` moved under us once (an old cached builder produced a
+# Caddy without directives the routes file uses). Bump both tags together.
+FROM caddy:2.11.4-builder AS builder
 # pmtiles_proxy (file.marinesensitivity.org tiles) + jwtauth: the origin-side
 # check for the signed-in preview host. Cloudflare Access sets a
 # Cf-Access-Jwt-Assertion header on every request it lets through; jwtauth
@@ -11,5 +13,5 @@ RUN xcaddy build \
   --with github.com/protomaps/go-pmtiles/caddy \
   --with github.com/ggicci/caddy-jwt@v1.3.0
 
-FROM caddy:latest
+FROM caddy:2.11.4
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy

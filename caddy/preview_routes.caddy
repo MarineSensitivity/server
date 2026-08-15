@@ -32,8 +32,9 @@ handle @vapp {
 	route {
 		# the version is the path; any ?ver= a client sends is overridden. Other
 		# params (Shiny's session/dataobj `w`/`nonce`, the species app's
-		# ?mdl_key= deep links) are kept.
-		query ver {re.vapp.1}
+		# ?mdl_key= deep links) are kept. (`uri query <key> <value>` SETS the
+		# param -- Caddy >= 2.8; there is no standalone `query` directive.)
+		uri query ver {re.vapp.1}
 		# strip the version prefix; a rewrite without `?` retains the query
 		rewrite * /{re.vapp.2}/{re.vapp.3}
 		# X-MS-User: the verified identity (jwtauth's user claim) for the app's
