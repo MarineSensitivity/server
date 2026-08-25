@@ -163,6 +163,35 @@ RUN installGithub.r \
   bbest/mapgl@484e869f93af01bf396cbba7f074f0a3c53eba6d \
   && rm -rf /tmp/downloaded_packages   # clean R package cache
 
+# obisindicators (OBIS -> H3 -> EOV indicators) + onmsR (sanctuary polygons).
+#
+# The obisindicators "store" articles are PRECOMPUTED in this container against
+# the global store (/share/data/obis/obis_h3.duckdb) by
+#   /share/github/marinebon/obisindicators/data-raw/precompute_articles.sh
+# and the knitted output committed, because pkgdown on GitHub Actions has no
+# store. That run `pkgload::load_all()`s the checkout, so what matters here is
+# the DEPENDENCY set; the pinned install is the floor that guarantees it.
+#
+# CRAN deps the image lacked, listed explicitly (same rule as above):
+#   gsl (ES50's lngamma), patchwork (figure panels), rerddap (onmsR).
+# `remotes::install_github(upgrade = "never")` rather than installGithub.r:
+# obisindicators' DESCRIPTION carries `Remotes:` for h3-r and the bbest/mapgl
+# BRANCH, which a default install would resolve and walk the two pins above
+# back to whatever those branches point at today. Bump OBISIND_REF with the
+# package; ONMSR_REF is onmsR 0.2.4 (2025-11-12 sanctuaries update).
+ARG OBISIND_REF=4762db63045d462416b67645993e058bc9f138f6
+ARG ONMSR_REF=804e3017e941067ad8a30a100d7ce5601134c0cb
+RUN install2.r --error gsl patchwork rerddap \
+  && R -e 'remotes::install_github( \
+             c(paste0("marinebon/obisindicators@", Sys.getenv("OBISIND_REF")), \
+               paste0("noaa-onms/onmsR@",          Sys.getenv("ONMSR_REF"))), \
+             dependencies = TRUE, upgrade = "never")' \
+  && R -e 'stopifnot(packageVersion("obisindicators") >= "0.6.1", \
+                     packageVersion("onmsR") >= "0.2.4", \
+                     packageDescription("mapgl")$RemoteSha == "484e869f93af01bf396cbba7f074f0a3c53eba6d", \
+                     packageDescription("h3")$RemoteSha    == "6b658e832f6907581d9d5c5296d611c4e4cf372a")' \
+  && rm -rf /tmp/downloaded_packages   # clean R package cache
+
 # DuckDB extensions, baked into the PERSISTENT duckdb home each user actually reads.
 #
 # Left to itself, duckdb stores extensions in a per-session temp dir
