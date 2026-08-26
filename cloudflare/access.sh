@@ -7,6 +7,9 @@
 #
 #   ./access.sh --dry-run     # print every API call it WOULD make; no credentials needed
 #   ./access.sh               # apply
+#   ./access.sh --rotate NAME # mint a NEW secret for an existing service token
+#                             # (Cloudflare returns a token's secret exactly once,
+#                             #  so this is the recovery when one is lost)
 #
 # WHY PER VERSION: Cloudflare Access scopes an application by hostname + PATH
 # (never by query string), and the more specific path wins while unmatched
@@ -48,8 +51,13 @@ set -euo pipefail
 API=https://api.cloudflare.com/client/v4
 host=${PREVIEW_HOST:-preview.marinesensitivity.org}
 versions_url=${VERSIONS_URL:-https://s3.us-east-1.amazonaws.com/oceanmetrics.io-public/marine-atlas/versions.json}
-dry=0
-[ "${1:-}" = "--dry-run" ] && dry=1
+dry=0; rotate=""
+case "${1:-}" in
+  --dry-run) dry=1 ;;
+  --rotate)  rotate=${2:?--rotate needs a service-token name} ;;
+  "")        ;;
+  *)         echo "unknown argument: $1 (see the header of this script)" >&2; exit 2 ;;
+esac
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
 need curl; need jq
@@ -82,6 +90,24 @@ cf() {
     echo "API $method $path failed:" >&2
     echo "$out" | jq -r '.errors // . | tostring' >&2
     exit 1
+  fi
+  echo "$out" | jq -c '.result'
+}
+
+# same, but a failed request returns non-zero instead of ending the run --
+# for calls whose failure is a legitimate state (see the cache ruleset below)
+cf_try() {
+  local method=$1 path=$2 data=${3:-} out
+  [ "$dry" = 1 ] && { echo "    [dry-run] $method $path" >&2; echo '{}'; return 0; }
+  if [ -n "$data" ]; then
+    out=$(curl -sS -m 60 --request "$method" "$API$path" \
+      -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json" --data "$data")
+  else
+    out=$(curl -sS -m 60 --request "$method" "$API$path" -H "Authorization: Bearer $CF_API_TOKEN")
+  fi
+  if [ "$(echo "$out" | jq -r '.success // false')" != "true" ]; then
+    echo "$out" | jq -c '.errors' >&2
+    return 1
   fi
   echo "$out" | jq -c '.result'
 }
@@ -161,8 +187,33 @@ upsert_app() {     # <name> <domain> <policy-id...> -> "aud"
   echo "$aud"
 }
 
+# Where a new secret is persisted. Cloudflare returns a service-token secret
+# exactly ONCE, at creation, so it is written the moment it exists -- never
+# accumulated for a summary at the end, which is how a later failure in this
+# script (a zone with no cache-rules ruleset yet) once swallowed one.
+secrets_out=${SECRETS_OUT:-}
+if [ -z "$secrets_out" ] && [ -d /share/private ]; then secrets_out=/share/private/preview_access.env; fi
+record_secret() {  # <env-suffix> <client_id> <client_secret>
+  local pfx=$1 cid=$2 sec=$3 line
+  line="CF_ACCESS_CLIENT_ID${pfx:+_$pfx}=$cid
+CF_ACCESS_CLIENT_SECRET${pfx:+_$pfx}=$sec"
+  new_secrets="${new_secrets}${line}
+"
+  if [ -n "$secrets_out" ] && [ "$dry" = 0 ]; then
+    (umask 077; printf '%s\n' "$line" >> "$secrets_out")
+    echo "  secret  -> $secrets_out (owner-only)" >&2
+  else
+    echo "  secret  $line" >&2
+  fi
+}
+tok_pfx() {        # msens-preview-probe-v8 -> PROBE_V8 ; msens-preview-check -> "" (the plain pair)
+  local p; p=$(echo "$1" | sed 's/^msens-preview-//; s/-/_/g' | tr '[:lower:]' '[:upper:]')
+  [ "$p" = "CHECK" ] && p=""
+  echo "$p"
+}
+
 new_secrets=""
-upsert_token() {   # <name> -> token id (secret printed ONCE, on creation)
+upsert_token() {   # <name> -> token id (secret recorded ONCE, on creation)
   local name=$1 id res
   id=$(by_name "$tokens" "$name")
   if [ -n "$id" ]; then
@@ -172,17 +223,25 @@ upsert_token() {   # <name> -> token id (secret printed ONCE, on creation)
   res=$(cf POST "/accounts/$CF_ACCOUNT_ID/access/service_tokens" \
         "$(jq -n --arg n "$name" '{name: $n, duration: "8760h"}')")
   id=$(echo "$res" | jq -r '.id // "dry-token"')
-  local cid sec envpfx
-  cid=$(echo "$res" | jq -r '.client_id // "dry.access"')
-  sec=$(echo "$res" | jq -r '.client_secret // "dry-secret"')
-  envpfx=$(echo "$name" | sed 's/^msens-preview-//; s/-/_/g' | tr '[:lower:]' '[:upper:]')
-  [ "$envpfx" = "CHECK" ] && envpfx=""   # the shared token is the plain pair
-  new_secrets="${new_secrets}CF_ACCESS_CLIENT_ID${envpfx:+_$envpfx}=$cid
-CF_ACCESS_CLIENT_SECRET${envpfx:+_$envpfx}=$sec
-"
-  echo "  token   $name (created; secret below -- shown ONCE)" >&2
+  echo "  token   $name (created)" >&2
+  record_secret "$(tok_pfx "$name")" \
+    "$(echo "$res" | jq -r '.client_id // "dry.access"')" \
+    "$(echo "$res" | jq -r '.client_secret // "dry-secret"')"
   echo "$id"
 }
+
+# --rotate: Cloudflare shows a secret once; this mints a new one for an existing
+# token (same client_id) and revokes the previous secret immediately.
+if [ -n "$rotate" ]; then
+  toks=$(cf GET "/accounts/$CF_ACCOUNT_ID/access/service_tokens")
+  tid=$(echo "$toks" | jq -r --arg n "$rotate" 'map(select(.name == $n)) | .[0].id // empty')
+  [ -n "$tid" ] || { echo "no service token named '$rotate'" >&2; exit 1; }
+  res=$(cf POST "/accounts/$CF_ACCOUNT_ID/access/service_tokens/$tid/rotate" '{}')
+  echo "rotated $rotate (previous secret revoked immediately)"
+  record_secret "$(tok_pfx "$rotate")" \
+    "$(echo "$res" | jq -r '.client_id')" "$(echo "$res" | jq -r '.client_secret')"
+  exit 0
+fi
 
 # ---- policies + tokens ------------------------------------------------------
 echo "policies, applications and service tokens:"
@@ -215,7 +274,11 @@ if [ -n "${CF_ZONE_ID:-}" ]; then
   echo
   echo "cache rule:"
   desc="bypass cache: $host"
-  cur=$(cf GET "/zones/$CF_ZONE_ID/rulesets/phases/http_request_cache_settings/entrypoint" || echo '{}')
+  # A zone with no cache rules has NO entrypoint ruleset yet and answers 10003
+  # ("could not find entrypoint ruleset"). That is a normal empty state, not an
+  # error: treat it as "no existing rules" and let the PUT create the ruleset.
+  cur=$(cf_try GET "/zones/$CF_ZONE_ID/rulesets/phases/http_request_cache_settings/entrypoint") \
+    || { echo "  (no cache ruleset yet — creating it)"; cur='{}'; }
   # read-modify-write: a bare PUT would silently discard any other cache rule
   rules=$(echo "$cur" | jq -c --arg d "$desc" '((.rules // []) | map(select(.description != $d)))')
   rule=$(jq -n --arg e "(http.host eq \"$host\")" --arg d "$desc" \
@@ -244,16 +307,11 @@ echo "  (CF_ACCESS_AUD lists EVERY application's AUD: caddy-jwt's audience_white
 echo "   is space-separated, and each Access application signs with its own AUD, so"
 echo "   a missing one makes that path 401 at the origin after Access let it through.)"
 if [ -n "$new_secrets" ]; then
-  out=${SECRETS_OUT:-}
-  if [ -z "$out" ] && [ -d /share/private ]; then out=/share/private/preview_access.env; fi
   echo
-  echo "NEW SERVICE TOKEN SECRETS (shown once):"
-  echo "$new_secrets"
-  if [ -n "$out" ] && [ "$dry" = 0 ]; then
-    umask 077; printf '%s' "$new_secrets" >> "$out"
-    echo "  appended to $out (owner-only)"
-  fi
+  echo "NEW SERVICE TOKEN SECRETS were recorded above${secrets_out:+ and appended to $secrets_out}."
   echo "  CHECK_PREVIEW reads CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET (the shared"
   echo "  check token); the per-version probe pairs prove a v-N token cannot open v-M."
+  echo "  A secret is shown ONCE by Cloudflare: recover a lost one with"
+  echo "  ./access.sh --rotate <token-name>."
 fi
 echo "=============================================================================="
