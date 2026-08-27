@@ -19,10 +19,21 @@ set -u
 CHECKOUT=/share/github/MarineSensitivity/msens
 say() { echo "[msens-from-share] $*"; }
 
+# cont-init runs with a minimal PATH that does NOT include /usr/local/bin, so a
+# bare `R` here is "No such file or directory" -- which the first version of this
+# script reported as "INSTALL FAILED (keeping none)" while the image's own msens
+# was in fact fine. Resolve R explicitly, and say so if it cannot be found.
+R_BIN=$(command -v R 2>/dev/null || true)
+for c in /usr/local/bin/R /usr/lib/R/bin/R /usr/local/lib/R/bin/R; do
+  [ -n "$R_BIN" ] && break
+  [ -x "$c" ] && R_BIN=$c
+done
+[ -n "$R_BIN" ] || { say "no R on this image — skipping"; exit 0; }
+
 [ -f "$CHECKOUT/DESCRIPTION" ] || { say "no checkout at $CHECKOUT — keeping the image's msens"; exit 0; }
 
 want=$(sed -n 's/^Version:[[:space:]]*//p' "$CHECKOUT/DESCRIPTION" | head -1)
-have=$(R --no-echo --no-restore -e 'cat(tryCatch(as.character(packageVersion("msens")), error = function(e) ""))' 2>/dev/null)
+have=$("$R_BIN" --no-echo --no-restore -e 'cat(tryCatch(as.character(packageVersion("msens")), error = function(e) ""))' 2>/dev/null)
 
 if [ -n "$want" ] && [ "$want" = "$have" ]; then
   say "msens $have matches the checkout — nothing to do"
@@ -30,8 +41,8 @@ if [ -n "$want" ] && [ "$want" = "$have" ]; then
 fi
 
 say "installing msens $want from $CHECKOUT (container had '${have:-none}')"
-if timeout 900 R CMD INSTALL --no-multiarch "$CHECKOUT" >/tmp/msens-install.log 2>&1; then
-  now=$(R --no-echo --no-restore -e 'cat(as.character(packageVersion("msens")))' 2>/dev/null)
+if timeout 900 "$R_BIN" CMD INSTALL --no-multiarch "$CHECKOUT" >/tmp/msens-install.log 2>&1; then
+  now=$("$R_BIN" --no-echo --no-restore -e 'cat(as.character(packageVersion("msens")))' 2>/dev/null)
   say "installed msens $now"
 else
   say "INSTALL FAILED (keeping ${have:-none}); tail of /tmp/msens-install.log:"
