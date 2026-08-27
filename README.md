@@ -69,6 +69,31 @@ docker compose up -d --build
   [More info..](https://postgrest.org/en/stable/)
 
 
+## Keeping apps warm, and the resource budget
+
+`warm` (a tiny sidecar, `warm/warm.sh`) re-requests the pages people actually open — the promoted
+release and every `restricted` one, from the registry, not a hardcoded list — every 20 minutes and
+immediately after `DEPLOY_APPS`. It hits `rstudio:3838` / `:3839` directly, so no Cloudflare round
+trip, no Access token, no egress. Paired with `app_idle_timeout 3600`
+(`rstudio/shiny-server.conf`), that turns a visitor's first page from ~13–17 s into ~1 s.
+
+**Budget (measured 2026-08-27, 4 cores / 16 GB):** load ~0.4, ~7.6 GB available. `rstudio` 3.8 GB
+(4 warm R workers at ~550 MB each, plus RStudio Server), `titiler` 1.2 GB, `titiler-v8` 0.9 GB,
+`h3t` 0.7 GB, everything else < 250 MB. Warming costs ~4 page renders per 20 min — under 1 % of one
+core — and its memory is the four pinned workers, not the sidecar (~5 MB).
+
+**If it ever gets tight**, in order: warm fewer versions (drop the restricted ones, or set
+`WARM_INTERVAL` higher and let `app_idle_timeout` expire them), lower `app_idle_timeout`, then look
+at the species bundle — 222 MB per worker versus scores' 9.6 MB, the one outlier worth fixing at
+source. A pipeline render inside `rstudio` is the other big transient consumer; it is what the
+headroom is for.
+
+**The report API is deliberately NOT warmed.** `plumber` is a long-running process, so it has no
+cold start; each report is a fresh quarto render (~21–24 s) whose cost is the render itself, and
+repeats are already free (~1.2 s) from the content-hash cache in `/share/public/reports`. Since a
+report's key includes its title and areas, pre-rendering would almost never be hit. What the report
+path does need is a *liveness* check — see the heartbeat note below.
+
 ## Preview host (restricted pre-releases)
 
 `preview.marinesensitivity.org` serves **restricted** releases — pre-releases under review — to
