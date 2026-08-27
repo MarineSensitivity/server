@@ -250,7 +250,14 @@ preview.marinesensitivity.org {
 		from_cookies CF_Authorization
 		issuer_whitelist https://{$CF_ACCESS_TEAM:unconfigured}.cloudflareaccess.com
 		audience_whitelist {$CF_ACCESS_AUD:unconfigured}
-		user_claims email
+		# A HUMAN's Access JWT carries `email`; a SERVICE TOKEN's carries
+		# `common_name` (its client id) and no email at all. caddy-jwt needs to
+		# find one of these or it rejects the request -- which is how the release
+		# notebook's own check token got a 401 from the ORIGIN after Cloudflare
+		# had already admitted it. (Cloudflare rewrites `server:` on proxied
+		# responses, so `server: cloudflare` on that 401 was not evidence that
+		# Cloudflare produced it; the body was this vhost's own error page.)
+		user_claims email common_name sub
 	}
 
 	# the routes themselves live in a file the functional test can import too
