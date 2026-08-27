@@ -71,6 +71,16 @@ req "/$ver/scores/__sockjs__/info" "${auth[@]}"
 req "/$ver/scores/shared/shiny.min.js" "${auth[@]}"
 [ "$CODE" = 200 ] && ok "static assets proxy under the version prefix" || bad "assets" "code=$CODE"
 
+# REGRESSION (2026-08-27): shiny-server serves its own client bundle from a
+# handler that 404s if the request carries ANY query string, so forcing ?ver=
+# on subresources broke the app -- sidebar rendered, map stuck on "Loading
+# map...", because preShinyInit was never defined. `shared/` above does NOT
+# catch this: it tolerates a query. These two do.
+for a in __assets__/shiny-server-client.min.js __assets__/sockjs.min.js; do
+  req "/$ver/scores/$a" "${auth[@]}"
+  [ "$CODE" = 200 ] && ok "shiny-server client bundle: $a" || bad "$a" "code=$CODE (query forced onto a subresource?)"
+done
+
 req "/$ver/scores" "${auth[@]}"
 [ "$CODE" = 308 ] && [ "${LOC%\?*}" = "http://$name:8080/$ver/scores/" ] && ok "/$ver/scores -> 308 /$ver/scores/" || bad "noslash redirect" "code=$CODE loc=$LOC"
 
