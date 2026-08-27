@@ -152,7 +152,8 @@ RUN installGithub.r \
                            "assign_mdl_id", "dataset_is_scored", "sdm_cols", \
                            "sdm_val_col", "atlas_allow_access", "atlas_is_preview", \
                            "ver_token_sign", "ver_token_verify", "preview_app_url", \
-                           "study_areas", "product_urls") \
+                           "study_areas", "product_urls", \
+                           "zone_style", "zone_line_args", "zone_label_args") \
                          %in% getNamespaceExports("msens")))' \
   && rm -rf /tmp/downloaded_packages   # clean R package cache
 
