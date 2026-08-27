@@ -22,6 +22,8 @@ services:
       # exercise the very same file behind a test jwtauth (single-file bind
       # mount, same restart rule as the Caddyfile)
       - ./caddy/preview_routes.caddy:/etc/caddy/preview_routes.caddy
+      # the version-path routes, shared by BOTH app vhosts (see the Caddyfile)
+      - ./caddy/app_version_routes.caddy:/etc/caddy/app_version_routes.caddy
       - /share:/share
       - /share/caddy/data:/data
       - /share/caddy/config:/config

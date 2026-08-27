@@ -186,18 +186,25 @@ app.marinesensitivity.org {
 	#
 	# An empty {query} leaves a harmless trailing "&", which parses to nothing.
 	@scores_ver path_regexp scv ^/(?:mapgl|scores)_(v[0-9]+[a-z]?)(?:/(.*))?$
-	redir @scores_ver /scores/?ver={re.scv.1}&{query} 301
+	redir @scores_ver /{re.scv.1}/scores/?{query} 301
 
 	@species_ver path_regexp spv ^/(?:mapsp|species)_(v[0-9]+[a-z]?)(?:/(.*))?$
-	redir @species_ver /species/?ver={re.spv.1}&{query} 301
+	redir @species_ver /{re.spv.1}/species/?{query} 301
 
 	# the unsuffixed v7 instances: `mapgl`/`mapsp` were what /scores and
 	# /species pointed at, so they carry v7 explicitly
 	@scores_v7 path_regexp sc7 ^/mapgl(?:/(.*))?$
-	redir @scores_v7 /scores/?ver=v7&{query} 301
+	redir @scores_v7 /v7/scores/?{query} 301
 
 	@species_v7 path_regexp sp7 ^/mapsp(?:/(.*))?$
-	redir @species_v7 /species/?ver=v7&{query} 301
+	redir @species_v7 /v7/species/?{query} 301
+
+	# THE VERSION IS THE PATH here too (2026-08-27). One definition, shared with
+	# the preview vhost, so the two hosts cannot drift: /v7/scores/ is canonical,
+	# /scores/?ver=v7 301s to it, and the app reads X-MS-Version. A bare /scores/
+	# (no version) still resolves the promoted release inside the app -- Caddy
+	# cannot read latest.txt, and the app canonicalises the URL once it knows.
+	import app_version_routes.caddy rstudio:3838
 
 	# X-MS-User (the signed-in reviewer's identity) and X-MS-Version (the version
 	# from the preview host's URL path) are set by the PREVIEW vhost from things

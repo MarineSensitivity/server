@@ -1,0 +1,45 @@
+# app_version_routes.caddy — THE VERSION IS THE PATH: /{ver}/scores/, /{ver}/species/.
+#
+# Imported by BOTH app vhosts, so the two cannot drift:
+#   app.marinesensitivity.org      import app_version_routes.caddy rstudio:3838
+#   preview.marinesensitivity.org  import app_version_routes.caddy rstudio:3839
+# {args[0]} is the upstream.
+#
+# shiny-server serves the apps at /scores and /species, so the version prefix is
+# stripped here and handed over as X-MS-Version -- a header Caddy SETS from the
+# path, which a client cannot forge and which needs no ?ver= duplicating it in
+# every shared link. Nothing manipulates the query: shiny-server's own client
+# bundle (`<app>/__assets__/...`) is served by a handler that 404s if a request
+# carries ANY query string, and forcing `ver` there once left both apps hanging
+# on "Loading map..." forever.
+#
+# X-MS-User is the signed-in reviewer's identity on the preview host; on the
+# public host jwtauth never runs, so the placeholder is empty and the app shows
+# no badge. Both headers are SET, never appended, so a client cannot supply them.
+
+@vapp_noslash path_regexp vns ^/(v[0-9]+[a-z]?)/(scores|species)$
+redir @vapp_noslash {path}/?{query} 308
+
+@vapp path_regexp vapp ^/(v[0-9]+[a-z]?)/(scores|species)(/.*)$
+handle @vapp {
+	rewrite * /{re.vapp.2}{re.vapp.3}
+	reverse_proxy {args[0]} {
+		header_up X-MS-Version {re.vapp.1}
+		header_up X-MS-User {http.auth.user.id}
+	}
+}
+
+# The pre-path spelling, kept working: every published deep link, report and
+# bookmark still says /scores/?ver=v7. 301 it to the canonical path, carrying the
+# REST of the query (`&{query}` would re-append ver, so the app would see it
+# twice; the version is already in the path and X-MS-Version wins anyway).
+@vquery_slash {
+	path /scores/ /species/
+	query ver=*
+}
+redir @vquery_slash /{query.ver}{path} 301
+@vquery_noslash {
+	path /scores /species
+	query ver=*
+}
+redir @vquery_noslash /{query.ver}{path}/ 301
