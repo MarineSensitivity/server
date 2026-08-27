@@ -1,9 +1,14 @@
-# Phase 1 runbook — put Cloudflare Access in front of `preview.marinesensitivity.org`
+# The preview host — operations, and how it was set up
 
-Everything behind the gate is already built and deployed; what is missing is the **door**. Today
-every preview URL answers `401` (with a page saying so) because Caddy's `jwtauth` demands a
-Cloudflare Access JWT and nothing issues one yet. This runbook ends with you and Tim signing in by
-emailed code and seeing the restricted release.
+**Live since 2026-08-27.** `preview.marinesensitivity.org` serves restricted (under-review)
+releases to invited reviewers; **v8 is restricted today**. Steps 1–8 below are the one-time setup,
+kept as the record and for rebuilding elsewhere — they are **done**. For day-to-day work jump to
+[Managing reviewers](#managing-reviewers) and [What a reviewer does](#what-a-reviewer-does).
+
+Current state: zone `marinesensitivity.org` on Cloudflare (only `preview` proxied), Zero Trust team
+`marinesensitivity`, One-time PIN login, three Access applications (catch-all, `preview…/v8`,
+`preview…/docs/v8`), reviewers **ben@oceanmetrics.io** (admin, everywhere) and
+**timothy.white@boem.gov** (v8).
 
 Plan and rationale: `workflows/.claude/plans/2026-08-15 pre-release review gate — preview host + Cloudflare Access.md`.
 
@@ -125,7 +130,7 @@ It prints two lines to paste into `.env`:
 
 ```sh
 CF_ACCESS_TEAM=marinesensitivity
-CF_ACCESS_AUD=<aud> <aud> …      # space-separated: EVERY application's AUD
+CF_ACCESS_AUD="<aud> <aud> …"    # QUOTED: space-separated, one per application
 ```
 
 …and any new service-token secrets (shown once; also appended to
@@ -157,7 +162,7 @@ By hand, the thing that actually matters:
    with a **PREVIEW** badge naming you.
 3. Ask Tim to do the same. His PIN arriving at a `.gov` mailbox is the real acceptance test.
 
-## 9. Phase 2 — flip v8 to restricted
+## 9. Flipping a version to restricted (v8 was done this way on 2026-08-27)
 
 Order matters: **publish the registry before the readers act on it.**
 
@@ -176,11 +181,55 @@ CHECK_PREVIEW=1 quarto render release_marine-atlas.qmd
 
 ## Managing reviewers
 
-Edit `PREVIEW_REVIEWERS_<VER>` in `.env` and re-run `access.sh` — it updates that release's policy
-in place. To open a release to a whole agency, replace the email list with a domain rule in the
-dashboard (Zero Trust → Access → Policies → *preview v8 reviewers* → Include → *Emails ending in*
-`@boem.gov`); `access.sh` would overwrite that on its next run, so if you go that route, say so
-here and drop the version from the script's email handling.
+Reviewer lists live in the server `.env` — **one line per version**, so access is per release:
+
+```sh
+PREVIEW_ADMINS=ben@oceanmetrics.io                                  # catch-all: landing page + any ungated version
+PREVIEW_REVIEWERS_V8=ben@oceanmetrics.io,timothy.white@boem.gov     # v8 only (V9 for v9, V4B for v4b …)
+```
+
+Add or remove someone, then apply:
+
+```sh
+ssh msens 'cd /share/github/MarineSensitivity/server && set -a && . ./.env && set +a && cloudflare/access.sh'
+```
+
+That is the whole operation for an **existing** restricted version: `access.sh` updates the policy
+in place, no new AUDs, nothing else to deploy. New reviewers get in on their next sign-in.
+
+**Making a NEW version restricted** (say v9) additionally mints applications, so:
+
+```sh
+# 1. registry FIRST — every reader derives access fail-closed from it
+#    workflows/data/versions.csv: v9 -> restricted, then
+cd ~/Github/MarineSensitivity/workflows && quarto render build_version_manifest.qmd
+# 2. add PREVIEW_REVIEWERS_V9=… to .env, then create its applications
+ssh msens 'cd /share/github/MarineSensitivity/server && set -a && . ./.env && set +a && cloudflare/access.sh'
+# 3. paste the printed CF_ACCESS_AUD="…" line into .env (it lists EVERY application's AUD), then
+DEPLOY_APPS=1 quarto render release_marine-atlas.qmd     # apps first: DEPLOY_CADDY's routes test asserts them
+DEPLOY_CADDY=1 quarto render release_marine-atlas.qmd
+# 4. docs: the CI moves a restricted version's book to gh-pages-preview
+gh workflow run quarto-publish.yaml --repo MarineSensitivity/docs
+# 5. prove it
+CHECK_PREVIEW=1 quarto render release_marine-atlas.qmd
+```
+
+To open a release to a whole agency instead of naming people, replace the email list with a domain
+rule in the dashboard (Zero Trust → Access → Policies → *preview v9 reviewers* → Include → *Emails
+ending in* `@boem.gov`) — but `access.sh` rewrites that policy from `.env` on its next run, so if
+you go that way, record it here and drop that version from the script's email handling.
+
+## What a reviewer does
+
+Send them the version link — nothing else is needed, no account, no password:
+
+- apps: `https://preview.marinesensitivity.org/v8/scores/` · `…/v8/species/`
+- docs: `https://preview.marinesensitivity.org/docs/v8/`
+- or the landing page `https://preview.marinesensitivity.org/`, which lists the restricted releases
+
+They enter their email, Cloudflare emails a one-time PIN, and the session lasts 24 h. The app shows
+a **PREVIEW** badge with their address, and the version they are reading is the one in the path — a
+v8 reviewer cannot reach v9 (proven by `CHECK_PREVIEW`'s per-version probe tokens).
 
 ## Rollback
 
@@ -213,3 +262,14 @@ here and drop the version from the script's email handling.
   the dashboard if that is annoying.
 - **A blocked user still sees "a code has been emailed to you"** — by design. If someone says the
   PIN never arrives, check the policy first, then their spam filter.
+- **Never force a query onto app requests.** shiny-server serves its client bundle from
+  `<app>/__assets__/…` via a handler that 404s if the request carries ANY query string. The version
+  therefore travels as the `X-MS-Version` header (`caddy/preview_routes.caddy`), not as `?ver=`;
+  when it was forced, both apps drew their sidebar and hung on "Loading map…".
+- **A service token's JWT has `common_name`, not `email`** — `jwtauth` must accept both
+  (`user_claims email common_name sub`) or Access admits the automated checks and the origin 401s
+  them. And Cloudflare rewrites `server:` on proxied responses, so a 401 that looks like
+  Cloudflare's may well be the origin's: read the body.
+- **Deploy apps before routes** for a coordinated change — `DEPLOY_CADDY` runs
+  `caddy/test/run.sh`, which asserts the app really renders the path's version, so routing-first
+  fails the test and stops the run before the apps update.

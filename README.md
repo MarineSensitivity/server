@@ -69,6 +69,24 @@ docker compose up -d --build
   [More info..](https://postgrest.org/en/stable/)
 
 
+## Preview host (restricted pre-releases)
+
+`preview.marinesensitivity.org` serves **restricted** releases — pre-releases under review — to
+invited reviewers only. Everything else stays public and unchanged.
+
+- **Who gets in:** Cloudflare Access (email one-time PIN), one application + reviewer policy **per
+  version**, because the version is the URL path: `/v8/scores/`, `/v8/species/`, `/docs/v8/`.
+  Reviewer lists live in `.env` as `PREVIEW_REVIEWERS_<VER>` (`PREVIEW_ADMINS` is the catch-all);
+  today admins = ben@oceanmetrics.io and `PREVIEW_REVIEWERS_V8` = ben@oceanmetrics.io,
+  timothy.white@boem.gov. Apply with `cloudflare/access.sh` — idempotent, reads the published
+  registry, `--dry-run` shows what it would do.
+- **How it is enforced:** Cloudflare in front (only this hostname is proxied), `jwtauth` in
+  `caddy/Caddyfile` verifying the Access JWT at the origin, routes in
+  `caddy/preview_routes.caddy` (tested by `caddy/test/run.sh`), and a SECOND Shiny Server instance
+  on `:3839` (`rstudio/shiny-server.conf` + `rstudio/shiny_apps_preview/`) whose wrapper sets
+  `MS_PREVIEW=1` — the public instance has no code path that renders a restricted release.
+- **Setup + operations runbook:** [`cloudflare/README.md`](cloudflare/README.md).
+
 ## Connect
 
 ```bash
