@@ -27,6 +27,7 @@ trap cleanup EXIT
 
 docker run -d --name "$name" --network "$net" \
   -v "$repo/caddy/preview_routes.caddy:/etc/caddy/preview_routes.caddy:ro" \
+  -v "$repo/caddy/app_version_routes.caddy:/etc/caddy/app_version_routes.caddy:ro" \
   -v "$here/preview_routes.test.Caddyfile:/etc/caddy/Caddyfile:ro" \
   -v "$repo/caddy/preview:/share/github/MarineSensitivity/server/caddy/preview:ro" \
   -v /share/docs_preview:/share/docs_preview:ro \
