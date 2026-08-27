@@ -60,7 +60,7 @@ if [ "$CODE" = 200 ] && [ "$(meta ms-ver)" = "$ver" ] && [ "$(meta ms-preview)" 
 grep -q "ggicci" "$body" && ok "X-MS-User from the verified claim reaches the badge" || bad "X-MS-User" "identity not in page"
 
 req "/$ver/scores/?ver=v7&probe=1" "${auth[@]}"
-[ "$CODE" = 200 ] && [ "$(meta ms-ver)" = "$ver" ] && ok "?ver=v7 on /$ver/ is OVERRIDDEN (ms-ver=$ver)" || bad "ver override" "code=$CODE ms-ver=$(meta ms-ver)"
+[ "$CODE" = 200 ] && [ "$(meta ms-ver)" = "$ver" ] && ok "a client's ?ver=v7 is INERT on /$ver/ (ms-ver=$ver)" || bad "ver override" "code=$CODE ms-ver=$(meta ms-ver)"
 
 req "/$ver/species/" "${auth[@]}"
 [ "$CODE" = 200 ] && [ "$(meta ms-ver)" = "$ver" ] && ok "/$ver/species/ -> app, ms-ver=$ver" || bad "/$ver/species/" "code=$CODE ms-ver=$(meta ms-ver)"

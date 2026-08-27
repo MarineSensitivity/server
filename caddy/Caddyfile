@@ -199,10 +199,13 @@ app.marinesensitivity.org {
 	@species_v7 path_regexp sp7 ^/mapsp(?:/(.*))?$
 	redir @species_v7 /species/?ver=v7&{query} 301
 
-	# X-MS-User is the signed-in reviewer's identity that the PREVIEW vhost sets
-	# from a verified Cloudflare Access JWT (the apps show it in a badge). It is
-	# meaningful only there; a client must not be able to supply it here.
+	# X-MS-User (the signed-in reviewer's identity) and X-MS-Version (the version
+	# from the preview host's URL path) are set by the PREVIEW vhost from things
+	# it has verified. Both are meaningful only there; a client must not be able
+	# to supply either here, where the version comes from ?ver= and the policy
+	# refuses restricted releases anyway.
 	request_header -X-MS-User
+	request_header -X-MS-Version
 
 	reverse_proxy rstudio:3838
 }

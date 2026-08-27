@@ -26,45 +26,33 @@ header X-Robots-Tag "noindex, nofollow"
 @vapp_noslash path_regexp vns ^/(v[0-9]+[a-z]?)/(scores|species)$
 redir @vapp_noslash {path}/?{query} 308
 
-# THE PAGE REQUEST -- and ONLY the page request -- gets ?ver= forced onto it.
-# Shiny Server serves its own client bundle at `<app>/__assets__/...` from a
-# handler that 404s as soon as the request carries ANY query string, so forcing
-# `ver` on every subresource (as this did at first) 404'd
-# shiny-server-client.min.js and sockjs.min.js. The visible result was an app
-# that renders its sidebar and then hangs on "Loading map...": without that
-# bundle `preShinyInit` is undefined, the SockJS wrapper never initialises, and
-# the browser falls back to a raw `wss://.../websocket/` that shiny-server does
-# not answer. The page GET is the only request that needs `ver` anyway -- from
-# it the app mints the signed token that binds the session to that version
-# (msens::ver_token_sign), so every later request is already version-bound.
-@vapp_root path_regexp vroot ^/(v[0-9]+[a-z]?)/(scores|species)/$
-handle @vapp_root {
-	# `route`: these run in THIS order, whatever the global directive order says
-	route {
-		# the version is the path; any ?ver= a client sends is overridden. Other
-		# params (the species app's ?mdl_key= deep links) are kept.
-		# (`uri query <key> <value>` SETS the param -- Caddy >= 2.8; there is no
-		# standalone `query` directive.)
-		uri query ver {re.vroot.1}
-		rewrite * /{re.vroot.2}/
-		# X-MS-User: the verified identity (jwtauth's user claim) for the app's
-		# PREVIEW badge -- set, never appended, so a client cannot supply it
-		reverse_proxy rstudio:3839 {
-			header_up X-MS-User {http.auth.user.id}
-		}
-	}
-}
-
-# everything else under the app prefix -- assets, __assets__, __sockjs__, the
-# websocket -- is proxied with its ORIGINAL query untouched (a rewrite with no
-# `?` retains it)
-@vapp_sub path_regexp vsub ^/(v[0-9]+[a-z]?)/(scores|species)/(.+)$
-handle @vapp_sub {
-	route {
-		rewrite * /{re.vsub.2}/{re.vsub.3}
-		reverse_proxy rstudio:3839 {
-			header_up X-MS-User {http.auth.user.id}
-		}
+# THE VERSION IS THE PATH, AND IT REACHES THE APP AS A HEADER -- not as ?ver=.
+#
+# shiny-server serves the app at /scores, so the /{ver}/ prefix is stripped here
+# and the version travels in `X-MS-Version`, which Caddy SETS from the path (a
+# client cannot forge it, exactly like X-MS-User). ui(req) reads it; the public
+# host, which has no prefix, keeps using ?ver=.
+#
+# This replaces forcing `uri query ver` onto the request, which was wrong twice
+# over. Practically: shiny-server's client bundle at `<app>/__assets__/...` comes
+# from a handler that 404s if the request carries ANY query string, so forcing
+# `ver` there 404'd shiny-server-client.min.js and left the app hanging on
+# "Loading map..." (preShinyInit undefined, then a raw `wss://.../websocket/`
+# shiny-server never answers). Conceptually: a query the server writes into a URL
+# the user then sees and can edit is a worse channel than a header the server
+# controls -- and it left `?ver=v8` duplicating the `/v8/` already in the path of
+# every link a reviewer might share. Dropping it also collapses what were two
+# route blocks (page vs subresource) back into one.
+@vapp path_regexp vapp ^/(v[0-9]+[a-z]?)/(scores|species)(/.*)$
+handle @vapp {
+	# strip the version prefix and hand the version to the app as a header. No
+	# query manipulation, so ONE block covers the page and every subresource --
+	# and shiny-server's own client bundle (`<app>/__assets__/...`, whose handler
+	# 404s if the request carries ANY query string) is untouched.
+	rewrite * /{re.vapp.2}{re.vapp.3}
+	reverse_proxy rstudio:3839 {
+		header_up X-MS-Version {re.vapp.1}
+		header_up X-MS-User {http.auth.user.id}
 	}
 }
 
