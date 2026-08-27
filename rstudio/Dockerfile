@@ -120,24 +120,45 @@ RUN install2.r --error \
 # `color` partial-matches `colormap`, so the outside-Program-Areas mask would
 # request colormap_name=#222222 and fail server-side.
 #
-# The deploy still reinstalls from the checkout on top; this pin only guarantees
-# the FLOOR, so a recreate can never drop below the version the apps need.
-# Bump MSENS_REF + MSENS_MIN together when an app starts needing something newer.
+# 2026-08-27: THE PIN IS NO LONGER A HAND-MAINTAINED CONSTANT. A floor that a
+# human has to remember to raise is a floor that rots: this one sat at 0.31.0
+# while msens reached 0.36.0, and the next recreate (for an unrelated package)
+# took both public apps down with `'study_areas' is not an exported object`.
+# The value it was protecting -- "a recreate can never drop below what the apps
+# need" -- is now delivered two better ways:
+#
+#   1. THIS BUILD TRACKS msens `main` by default. `docker compose build rstudio`
+#      is never stale. Reproducibility is kept by PASSING the resolved commit:
+#      rstudio/build.sh resolves main -> a SHA and builds with
+#      --build-arg MSENS_REF=<sha>, which also busts the layer cache (a bare
+#      `main` would let Docker reuse a months-old install layer -- the same
+#      staleness by another route). Pass a SHA yourself to rebuild an old image.
+#   2. THE CONTAINER RECONCILES AT START. cont-init/03_msens_from_share installs
+#      msens from the /share checkout whenever the running library disagrees with
+#      it, so a recreate between deploys converges on the deployed source instead
+#      of silently reverting to the image's snapshot.
+#
+# The exports assertion stays: it is the one check that speaks in terms of what
+# the apps actually call, and it fails the BUILD rather than a user's page.
 #
 # `mapgl` is deliberately NOT in this RUN — see the next one for why.
-ARG MSENS_REF=61ed8819da754f3e0a80f4fc485ca535aa10bd53
-ARG MSENS_MIN=0.31.0
+ARG MSENS_REF=main
 RUN installGithub.r \
   MarineSensitivity/msens@$MSENS_REF qfes/rdeck \
   crazycapivara/h3-r@6b658e832f6907581d9d5c5296d611c4e4cf372a \
   yogevherz/plotme@ff9ea913949b4274cac244c5ecb6061c92ad2556 \
-  && R -e 'stopifnot(packageVersion("msens") >= Sys.getenv("MSENS_MIN")); \
+  && R -e 'cat("installed msens", as.character(packageVersion("msens")), "\n"); \
            stopifnot(all(c("drawn_features_sf", "atlas_manifest", "version_picker_html", \
                            "assign_mdl_id", "dataset_is_scored", "sdm_cols", \
                            "sdm_val_col", "atlas_allow_access", "atlas_is_preview", \
-                           "ver_token_sign", "ver_token_verify", "preview_app_url") \
+                           "ver_token_sign", "ver_token_verify", "preview_app_url", \
+                           "study_areas", "product_urls") \
                          %in% getNamespaceExports("msens")))' \
   && rm -rf /tmp/downloaded_packages   # clean R package cache
+
+# the start-time reconcile (see the note above)
+COPY cont-init/03_msens_from_share /etc/cont-init.d/03_msens_from_share
+RUN chmod +x /etc/cont-init.d/03_msens_from_share
 
 # mapgl LAST, in its OWN layer, so nothing above can walk it back.
 #

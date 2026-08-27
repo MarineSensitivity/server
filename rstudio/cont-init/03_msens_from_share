@@ -1,0 +1,40 @@
+#!/bin/sh
+# Converge the container's msens on the DEPLOYED CHECKOUT at every start.
+#
+# The image installs msens too (see the Dockerfile), but an image is a snapshot
+# and a container recreate is not always a deploy: on 2026-08-27 the image was
+# rebuilt for unrelated packages, the recreate reset the R library to a pin from
+# 12 days earlier, and BOTH public apps 500'd on `msens::study_areas()` -- a
+# function the deployed apps needed and that pinned msens did not have. Nothing
+# warned; the apps were simply down until someone looked.
+#
+# So the running container reconciles itself with /share/github/.../msens, which
+# is the source the deployed apps are written against. Cheap (a version compare;
+# it installs only on a mismatch), and it removes the whole class of "a recreate
+# rolled msens back".
+#
+# Never fatal: a broken or absent checkout leaves whatever the image carries and
+# says so loudly in `docker logs rstudio`, rather than refusing to start.
+set -u
+CHECKOUT=/share/github/MarineSensitivity/msens
+say() { echo "[msens-from-share] $*"; }
+
+[ -f "$CHECKOUT/DESCRIPTION" ] || { say "no checkout at $CHECKOUT — keeping the image's msens"; exit 0; }
+
+want=$(sed -n 's/^Version:[[:space:]]*//p' "$CHECKOUT/DESCRIPTION" | head -1)
+have=$(R --no-echo --no-restore -e 'cat(tryCatch(as.character(packageVersion("msens")), error = function(e) ""))' 2>/dev/null)
+
+if [ -n "$want" ] && [ "$want" = "$have" ]; then
+  say "msens $have matches the checkout — nothing to do"
+  exit 0
+fi
+
+say "installing msens $want from $CHECKOUT (container had '${have:-none}')"
+if timeout 900 R CMD INSTALL --no-multiarch "$CHECKOUT" >/tmp/msens-install.log 2>&1; then
+  now=$(R --no-echo --no-restore -e 'cat(as.character(packageVersion("msens")))' 2>/dev/null)
+  say "installed msens $now"
+else
+  say "INSTALL FAILED (keeping ${have:-none}); tail of /tmp/msens-install.log:"
+  tail -20 /tmp/msens-install.log | sed 's/^/[msens-from-share] /'
+fi
+exit 0

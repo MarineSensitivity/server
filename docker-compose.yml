@@ -28,7 +28,15 @@ services:
 
   rstudio:
     container_name: rstudio
-    build: ./rstudio
+    build:
+      context: ./rstudio
+      args:
+        # which msens the IMAGE carries. Default `main` = never stale; the deploy
+        # (rstudio/build.sh) passes the resolved commit instead, which both
+        # records what was built and busts Docker's layer cache. The running
+        # container additionally reconciles with the /share checkout at start
+        # (rstudio/cont-init/03_msens_from_share).
+        MSENS_REF: ${MSENS_REF:-main}
     environment:
       ROOT: 'true'
       # The login is `rstudio`, and DEFAULT_USER must say so.
