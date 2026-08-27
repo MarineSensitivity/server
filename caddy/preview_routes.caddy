@@ -40,6 +40,14 @@ header X-Robots-Tag "noindex, nofollow"
 # route blocks (page vs subresource) back into one.
 import app_version_routes.caddy rstudio:3839
 
+# --- an UNVERSIONED app path on the preview host is never proxied ----------
+# It would sit outside every per-version Access policy (any signed-in reviewer
+# could reach any restricted release), so it must not reach shiny-server. Send
+# the reviewer to the landing page (the version list) rather than the 404 the
+# landing file_server would answer. The ?ver= spellings above match first.
+@oldapp path /scores /scores/* /species /species/*
+redir @oldapp / 302
+
 # --- restricted docs: /docs/{ver}/... -> the gh-pages-preview clone ---------
 handle_path /docs/* {
 	root * /share/docs_preview

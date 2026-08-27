@@ -86,10 +86,10 @@ req "/$ver/scores" "${auth[@]}"
 [ "$CODE" = 308 ] && [ "${LOC%\?*}" = "http://$name:8080/$ver/scores/" ] && ok "/$ver/scores -> 308 /$ver/scores/" || bad "noslash redirect" "code=$CODE loc=$LOC"
 
 req "/scores/?ver=$ver" "${auth[@]}"
-[ "$CODE" = 302 ] && [ "$LOC" = "http://$name:8080/$ver/scores/" ] && ok "/scores/?ver=$ver -> 302 /$ver/scores/ (never proxied)" || bad "query->path redirect" "code=$CODE loc=$LOC"
+[ "$CODE" = 301 ] && [ "$LOC" = "http://$name:8080/$ver/scores/" ] && ok "/scores/?ver=$ver -> 301 /$ver/scores/ (never proxied)" || bad "query->path redirect" "code=$CODE loc=$LOC"
 
 req "/species?ver=$ver" "${auth[@]}"
-[ "$CODE" = 302 ] && [ "$LOC" = "http://$name:8080/$ver/species/" ] && ok "/species?ver=$ver -> 302 /$ver/species/" || bad "query->path redirect (noslash)" "code=$CODE loc=$LOC"
+[ "$CODE" = 301 ] && [ "$LOC" = "http://$name:8080/$ver/species/" ] && ok "/species?ver=$ver -> 301 /$ver/species/" || bad "query->path redirect (noslash)" "code=$CODE loc=$LOC"
 
 req "/scores/" "${auth[@]}"
 [ "$CODE" = 302 ] && [ "$LOC" = "http://$name:8080/" ] && ok "/scores/ without ver -> 302 / (never proxied)" || bad "unversioned app path" "code=$CODE loc=$LOC"
