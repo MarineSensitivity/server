@@ -301,7 +301,10 @@ echo "Put these in the server .env (/share/github/MarineSensitivity/server/.env)
 echo "then deploy the routing:  cd workflows && DEPLOY_CADDY=1 quarto render release_marine-atlas.qmd"
 echo
 echo "CF_ACCESS_TEAM=${team%%.cloudflareaccess.com}"
-echo "CF_ACCESS_AUD=$(echo "$auds" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ' | sed 's/ $//')"
+# QUOTED: this value is space-separated, and an unquoted multi-word value makes
+# `set -a; . ./.env` run the tail as commands and export only the first AUD.
+# docker compose's own .env parser strips the quotes.
+echo "CF_ACCESS_AUD=\"$(echo "$auds" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ' | sed 's/ $//')\""
 echo
 echo "  (CF_ACCESS_AUD lists EVERY application's AUD: caddy-jwt's audience_whitelist"
 echo "   is space-separated, and each Access application signs with its own AUD, so"
