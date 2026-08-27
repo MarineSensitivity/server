@@ -73,6 +73,11 @@ services:
       # still correct -- only a session straddling a process restart is asked
       # to reload.
       MS_TOKEN_SECRET: ${MS_TOKEN_SECRET:-}
+      # shared secret the PREVIEW app instance sends to the API as
+      # X-MS-Preview-Token, so /report will render a restricted (under-review)
+      # release for a signed-in reviewer and for nobody else. Same value in the
+      # plumber service below; unset = restricted reports refused everywhere.
+      MSENS_PREVIEW_TOKEN: ${MSENS_PREVIEW_TOKEN:-}
     ports:
       - 8787:8787  # rstudio
       - 3838:3838  # shiny
@@ -142,6 +147,11 @@ services:
     build: ./plumber
     environment:
       MSENS_OBIS_DUCKDB: /share/data/obis/obis_h3.duckdb
+      # the other half of the review gate's report check: /report renders a
+      # restricted (under-review) release only for a caller presenting this
+      # secret in X-MS-Preview-Token -- i.e. the preview Shiny instance. Must
+      # match the rstudio service's value; unset = restricted reports refused.
+      MSENS_PREVIEW_TOKEN: ${MSENS_PREVIEW_TOKEN:-}
     ports:
       - 8888:8888  # api
     volumes:
