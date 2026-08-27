@@ -99,8 +99,11 @@ path does need is a *liveness* check — see the heartbeat note below.
 `preview.marinesensitivity.org` serves **restricted** releases — pre-releases under review — to
 invited reviewers only. Everything else stays public and unchanged.
 
+- **URLs:** the version is the path on BOTH app hosts (`app…/v7/scores/`,
+  `preview…/v8/scores/`), from one shared route file, `caddy/app_version_routes.caddy`. `?ver=`
+  301s to it.
 - **Who gets in:** Cloudflare Access (email one-time PIN), one application + reviewer policy **per
-  version**, because the version is the URL path: `/v8/scores/`, `/v8/species/`, `/docs/v8/`.
+  version** — which the path scheme is what makes possible, since Access scopes by path.
   Reviewer lists live in `.env` as `PREVIEW_REVIEWERS_<VER>` (`PREVIEW_ADMINS` is the catch-all);
   today admins = ben@oceanmetrics.io and `PREVIEW_REVIEWERS_V8` = ben@oceanmetrics.io,
   timothy.white@boem.gov. Apply with `cloudflare/access.sh` — idempotent, reads the published
