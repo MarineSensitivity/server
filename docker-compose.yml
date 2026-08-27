@@ -101,6 +101,22 @@ services:
       # which owns these.
       - /home/ubuntu/.aws:/home/rstudio/.aws:ro
 
+  # warm: keep the versions people actually open already built, so the first
+  # visitor after a deploy or a quiet night does not pay the ~13-17 s cold start
+  # (app_idle_timeout can only keep alive what someone already started). Reads
+  # the registry for WHICH versions — promoted + restricted — and hits the
+  # container ports directly, so no Cloudflare round trip and no Access token.
+  # See warm/warm.sh.
+  warm:
+    container_name: warm
+    image: alpine:3.22
+    restart: unless-stopped
+    depends_on: [rstudio]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["apk add --no-cache curl jq >/dev/null && exec /warm.sh"]
+    volumes:
+      - ./warm/warm.sh:/warm.sh:ro
+
   # docs-preview: the rendered books of RESTRICTED docs releases. GitHub Pages
   # cannot be gated, so the docs CI publishes restricted versions to the
   # `gh-pages-preview` branch (public versions go to gh-pages as always) and
