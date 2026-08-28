@@ -46,6 +46,15 @@
 #   VERSIONS_URL            default the published marine-atlas versions.json
 #   SECRETS_OUT             where new service-token secrets are written (default
 #                           /share/private/preview_access.env when that directory exists)
+#   PREVIEW_ORG_NAME        what the LOGIN PAGE calls this organisation (default
+#                           "BOEM Marine Sensitivity Toolkit"). A fresh Zero Trust org
+#                           is named after its generated subdomain, so reviewers were
+#                           greeted by "steep-bonus-bf70.cloudflareaccess.com".
+#   PREVIEW_LOGIN_LOGO      absolute URL of a logo for the login page (optional)
+#   PREVIEW_LOGIN_FOOTER    footer text. The default explains what Cloudflare's own
+#                           wording cannot: a one-time PIN is sent ONLY to an invited
+#                           address, and the page says "a code has been emailed" either
+#                           way -- by design, so the allow-list cannot be probed.
 set -euo pipefail
 
 API=https://api.cloudflare.com/client/v4
@@ -289,6 +298,28 @@ if [ -n "${CF_ZONE_ID:-}" ]; then
 else
   echo
   echo "cache rule: skipped (CF_ZONE_ID unset)"
+fi
+
+# ---- brand the login page ---------------------------------------------------
+# Cloudflare will NEVER say "that address is not allowed": with one-time PIN it
+# always claims a code was sent, so an outsider cannot enumerate who has access.
+# That is the right default and it cannot be changed -- but the page around it
+# can say who runs this and what to do when no code arrives, which is the part
+# that was actually confusing.
+echo
+echo "login page:"
+org_name=${PREVIEW_ORG_NAME:-"BOEM Marine Sensitivity Toolkit"}
+footer=${PREVIEW_LOGIN_FOOTER:-"Access is by invitation. A one-time code is emailed only to addresses on the reviewer list for this release; the page says a code was sent either way, so the list cannot be probed. If no code arrives, ask Ben Best (ben@oceanmetrics.io) to add you."}
+design=$(jq -n --arg h "$org_name" --arg f "$footer" --arg logo "${PREVIEW_LOGIN_LOGO:-}" \
+  '{header_text: $h, footer_text: $f, background_color: "#1b2a33", text_color: "#ffffff"}
+   + (if ($logo | length) > 0 then {logo_path: $logo} else {} end)')
+if org_out=$(cf_try PUT "/accounts/$CF_ACCOUNT_ID/access/organizations" \
+      "$(jq -n --arg n "$org_name" --argjson d "$design" '{name: $n, login_design: $d}')"); then
+  echo "  named \"$org_name\", footer set${PREVIEW_LOGIN_LOGO:+, logo $PREVIEW_LOGIN_LOGO}"
+else
+  echo "  SKIPPED: the API token lacks 'Access: Organizations, Identity Providers, and Groups: Edit'."
+  echo "  Add it (My Profile -> API Tokens -> edit this token) and re-run, or set it by hand in"
+  echo "  Zero Trust -> Settings -> Custom Pages -> Access login page."
 fi
 
 # ---- what the server needs --------------------------------------------------
