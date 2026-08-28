@@ -203,7 +203,9 @@ in place, no new AUDs, nothing else to deploy. New reviewers get in on their nex
 # 1. registry FIRST — every reader derives access fail-closed from it
 #    workflows/data/versions.csv: v9 -> restricted, then
 cd ~/Github/MarineSensitivity/workflows && quarto render build_version_manifest.qmd
-# 2. add PREVIEW_REVIEWERS_V9=… to .env, then create its applications
+# 2. add PREVIEW_REVIEWERS_V9=… to .env, and add v9 to PREVIEW_RESTRICTED_VERSIONS (a regex
+#    alternation, e.g. "v8|v9": the PUBLIC app host 302s these versions to the review host —
+#    DEPLOY_CADDY refuses to restart Caddy if it disagrees with versions.json), then create its applications
 ssh msens 'cd /share/github/MarineSensitivity/server && set -a && . ./.env && set +a && cloudflare/access.sh'
 # 3. paste the printed CF_ACCESS_AUD="…" line into .env (it lists EVERY application's AUD), then
 DEPLOY_APPS=1 quarto render release_marine-atlas.qmd     # apps first: DEPLOY_CADDY's routes test asserts them

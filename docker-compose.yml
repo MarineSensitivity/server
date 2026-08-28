@@ -16,6 +16,12 @@ services:
       # no real JWT, so every request there gets 401 rather than the app.
       CF_ACCESS_TEAM: ${CF_ACCESS_TEAM:-unconfigured}
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-unconfigured}
+      # the restricted releases, as a regex alternation ("v8|v9"): the PUBLIC app
+      # vhost 302s /{ver}/scores|species for these to the review host instead of
+      # silently rendering the promoted release. Kept in the server .env beside
+      # PREVIEW_REVIEWERS_<VER>; DEPLOY_CADDY asserts it against versions.json.
+      # Unset, nothing matches and the old fallback behaviour stands.
+      PREVIEW_RESTRICTED_VERSIONS: ${PREVIEW_RESTRICTED_VERSIONS:-__none__}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile
       # the preview host's routes, in their own file so caddy/test/run.sh can

@@ -209,6 +209,25 @@ app.marinesensitivity.org {
 	@species_v7 path_regexp sp7 ^/mapsp(?:/(.*))?$
 	redir @species_v7 /v7/species/?{query} 301
 
+	# A RESTRICTED release asked for on the PUBLIC host goes to the review host
+	# (2026-08-28). The app process here cannot resolve a restricted version
+	# (msens::atlas_allow_access), so /v8/scores/ used to render the promoted
+	# release with no hint -- fail-closed, but from a published link it simply
+	# looked like the wrong version (the homepage's v8 links "oddly ended up on
+	# v7"). Every spelling funnels through the path form first -- the retirement
+	# 301s above, the ?ver= 301s in app_version_routes.caddy -- so this ONE
+	# matcher catches them all and {uri} carries the query (deep links keep
+	# their mdl_key). 302, not 301: a version stops being restricted when it is
+	# released, and a cached 301 would keep sending visitors to the review host.
+	#
+	# PREVIEW_RESTRICTED_VERSIONS is a regex alternation of the restricted
+	# versions ("v8|v9") from the server .env -- the same manual step as
+	# PREVIEW_REVIEWERS_<VER> and CF_ACCESS_AUD -- and DEPLOY_CADDY asserts it
+	# against versions.json before restarting. Unset, it matches nothing and the
+	# prior behaviour (fall back to the promoted release) stands.
+	@restricted_app path_regexp rapp ^/(?:{$PREVIEW_RESTRICTED_VERSIONS:__none__})/(?:scores|species)(?:/.*)?$
+	redir @restricted_app https://preview.marinesensitivity.org{uri} 302
+
 	# THE VERSION IS THE PATH here too (2026-08-27). One definition, shared with
 	# the preview vhost, so the two hosts cannot drift: /v7/scores/ is canonical,
 	# /scores/?ver=v7 301s to it, and the app reads X-MS-Version. A bare /scores/
