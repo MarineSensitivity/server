@@ -21,6 +21,16 @@ api.marinesensitivity.org {
 file.marinesensitivity.org {
 	import cors
 
+	# the brand set, served straight from the repo checkout: a `git pull` on the
+	# server publishes it, so there is no copy step to forget. Used by the
+	# Cloudflare Access login page (which takes a logo URL), the docs, the apps
+	# and any deck. See server/branding/README.md.
+	handle_path /branding/* {
+		root * /share/github/MarineSensitivity/server/branding
+		header Cache-Control "public, max-age=3600"
+		file_server browse
+	}
+
 	# raw pmtiles for client-side PMTiles protocol (add_pmtiles_source)
 	handle_path /pmtiles/* {
 		root * /share/data/derived/pmtiles

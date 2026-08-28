@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 640" width="1600" height="640"
+     role="img" aria-label="Marine Sensitivity Toolkit">
+  <title>Marine Sensitivity Toolkit</title>
+  <desc>The wave mark, the 0.05 degree cell grid every distribution is resampled onto,
+        the Spectral ramp the score maps use, and the animals being scored.</desc>
+  <defs>
+    <linearGradient id="deep" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B1A22"/><stop offset="1" stop-color="#173B4B"/></linearGradient><linearGradient id="sea" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#2E8FBE"/><stop offset="0.55" stop-color="#3AB2E4"/><stop offset="1" stop-color="#66CDE0"/></linearGradient><linearGradient id="spectral" x1="0" y1="0" x2="1" y2="0"><stop offset="0.000" stop-color="#5E4FA2"/><stop offset="0.100" stop-color="#3288BD"/><stop offset="0.200" stop-color="#66C2A5"/><stop offset="0.300" stop-color="#ABDDA4"/><stop offset="0.400" stop-color="#E6F598"/><stop offset="0.500" stop-color="#FFFFBF"/><stop offset="0.600" stop-color="#FEE08B"/><stop offset="0.700" stop-color="#FDAE61"/><stop offset="0.800" stop-color="#F46D43"/><stop offset="0.900" stop-color="#D53E4F"/><stop offset="1.000" stop-color="#9E0142"/></linearGradient>
+    <clipPath id="disc"><circle cx="212" cy="300" r="132"/></clipPath>
+    <clipPath id="frame"><rect x="0" y="0" width="1600" height="640"/></clipPath>
+  </defs>
+  <rect width="1600" height="640" fill="url(#deep)"/>
+  <g clip-path="url(#frame)" stroke="#7FB6CC" stroke-width="1" opacity="0.22">
+    <path d="M0,140 H1600 M0,300 H1600 M0,460 H1600"/>
+    <path d="M300,0 V640 M600,0 V640 M900,0 V640 M1200,0 V640 M1500,0 V640"/>
+  </g>
+  <g clip-path="url(#frame)">
+    <path fill="url(#sea)" opacity="0.95"
+          d="M-20,520 C 260,586 520,520 780,452 C 1040,384 1320,352 1620,346 L1620,660 L-20,660 Z"/>
+    <path fill="#FFFFFF" opacity="0.10"
+          d="M-20,566 C 280,624 540,566 800,500 C 1060,434 1330,404 1620,398 L1620,436
+             C 1330,442 1070,472 812,538 C 552,604 280,660 -20,602 Z"/>
+    <rect x="40.0" y="556.0" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.10"/>
+    <rect x="74.0" y="554.0" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.12"/>
+    <rect x="108.0" y="550.4" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.14"/>
+    <rect x="142.0" y="545.8" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.16"/>
+    <rect x="176.0" y="540.4" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.18"/>
+    <rect x="210.0" y="534.3" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.20"/>
+    <rect x="244.0" y="527.7" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.22"/>
+    <rect x="278.0" y="520.7" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.24"/>
+    <rect x="312.0" y="513.4" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.26"/>
+    <rect x="346.0" y="505.8" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.28"/>
+    <rect x="1094.0" y="408.9" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.35"/>
+    <rect x="1128.0" y="411.2" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.34"/>
+    <rect x="1162.0" y="414.2" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.32"/>
+    <rect x="1196.0" y="417.8" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.31"/>
+    <rect x="1230.0" y="422.1" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.29"/>
+    <rect x="1264.0" y="426.9" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.28"/>
+    <rect x="1298.0" y="432.2" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.26"/>
+    <rect x="1332.0" y="438.1" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.24"/>
+    <rect x="1366.0" y="444.4" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.22"/>
+    <rect x="1400.0" y="451.1" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.20"/>
+    <rect x="1434.0" y="458.1" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.18"/>
+    <rect x="1468.0" y="465.4" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.16"/>
+    <rect x="1502.0" y="472.9" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.14"/>
+    <rect x="1536.0" y="480.6" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.12"/>
+    <rect x="1570.0" y="488.4" width="22" height="22" rx="2" fill="#BFEAF7" opacity="0.10"/>
+    <g transform="translate(1140,300) scale(0.62)" fill="#DFF3FB" opacity="0.42"><path d="M110,140 C110,190 107,222 105,258 L145,258 C143,222 140,190 140,140 Z"/><path d="M0,52 C50,44 98,78 125,122 C152,78 200,44 250,52 C214,92 176,122 155,152 C142,146 132,152 125,168 C118,152 108,146 95,152 C74,122 36,92 0,52 Z"/></g>
+    <g transform="translate(620,516) scale(0.68)" fill="#DFF3FB" opacity="0.34"><ellipse cx="60" cy="66" rx="36" ry="44"/><circle cx="60" cy="16" r="13"/><path d="M28,36 C8,26 -6,30 -10,44 C-4,52 12,52 30,46 Z"/><path d="M92,36 C112,26 126,30 130,44 C124,52 108,52 90,46 Z"/><path d="M32,96 C16,102 6,114 8,128 C18,130 32,120 40,106 Z"/><path d="M88,96 C104,102 114,114 112,128 C102,130 88,120 80,106 Z"/></g>
+    <g transform="translate(1425,545) scale(1.6,1.6)" fill="#DFF3FB" opacity="0.4"><path d="M0,0 C10,-8 26,-9 38,-2 C44,2 44,6 38,10 C26,17 10,16 0,8 Z"/><path d="M0,4 L-14,-6 L-11,4 L-14,14 Z"/></g>
+    <g transform="translate(1492,585) scale(1.2,1.2)" fill="#DFF3FB" opacity="0.32"><path d="M0,0 C10,-8 26,-9 38,-2 C44,2 44,6 38,10 C26,17 10,16 0,8 Z"/><path d="M0,4 L-14,-6 L-11,4 L-14,14 Z"/></g>
+    <g transform="translate(1392,600) scale(1.0,1.0)" fill="#DFF3FB" opacity="0.28"><path d="M0,0 C10,-8 26,-9 38,-2 C44,2 44,6 38,10 C26,17 10,16 0,8 Z"/><path d="M0,4 L-14,-6 L-11,4 L-14,14 Z"/></g>
+  </g>
+  <circle cx="212" cy="300" r="132" fill="#0E1B22"/>
+  <path clip-path="url(#disc)" fill="url(#sea)"
+        d="M60,342 C118,368 170,342 216,300 C255,264 306,247 380,236 L380,470 L60,470 Z"/>
+  <path clip-path="url(#disc)" fill="#FFFFFF" opacity="0.22"
+        d="M60,378 C124,397 182,376 227,340 C267,308 321,292 380,286 L380,317
+           C321,325 271,339 232,372 C186,410 121,422 60,402 Z"/>
+  <circle cx="212" cy="300" r="132" fill="none" stroke="#DDE7EC" stroke-width="11"/>
+  <g font-family="Avenir Next, -apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+    <text x="400" y="252" font-size="112" font-weight="600" fill="#FFFFFF">Marine Sensitivity</text>
+    <text x="404" y="316" font-size="38" font-weight="500" letter-spacing="7.5" fill="#9DB4C0">TOOLKIT &#183; BOEM</text>
+    <rect x="404" y="352" width="620" height="12" rx="6" fill="url(#spectral)"/>
+    <text x="404" y="424" font-size="34" fill="#C9DAE3">Species distributions and extinction risk,</text>
+    <text x="404" y="470" font-size="34" fill="#C9DAE3">scored across US ocean waters.</text>
+  </g>
+</svg>

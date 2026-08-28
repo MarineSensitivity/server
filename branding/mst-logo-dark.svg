@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300"
+     role="img" aria-label="Marine Sensitivity Toolkit">
+  <title>Marine Sensitivity Toolkit</title>
+  <defs><linearGradient id="sea" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#2E8FBE"/><stop offset="0.55" stop-color="#3AB2E4"/><stop offset="1" stop-color="#66CDE0"/></linearGradient><clipPath id="disc"><circle cx="150" cy="150" r="118"/></clipPath></defs>
+  <circle cx="150" cy="150" r="118" fill="#0E1B22"/>
+  <path clip-path="url(#disc)" fill="url(#sea)"
+        d="M20,188 C72,210 118,188 159,150 C194,118 240,103 305,93 L305,300 L20,300 Z"/>
+  <path clip-path="url(#disc)" fill="#FFFFFF" opacity="0.22"
+        d="M20,220 C77,237 129,218 169,186 C205,157 253,143 305,137 L305,165
+           C253,172 208,185 173,214 C132,248 74,259 20,241 Z"/>
+  <!-- no creature inside this disc: at lockup size it reads as a smudge. The
+       mark stays plain everywhere; the life lives in the hero, where it is
+       legible. -->
+  <circle cx="150" cy="150" r="118" fill="none" stroke="#DDE7EC" stroke-width="10"/>
+  <g font-family="Avenir Next, -apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+    <text x="312" y="132" font-size="100" font-weight="600" fill="#FFFFFF"
+          dominant-baseline="middle">Marine Sensitivity</text>
+    <text x="316" y="232" font-size="36" font-weight="500" letter-spacing="7" fill="#9DB4C0">TOOLKIT &#183; BOEM</text>
+  </g>
+</svg>
