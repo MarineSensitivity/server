@@ -171,7 +171,16 @@ def hero(dark=True, agency=AGENCY):
   </g>
 </svg>'''
 
+def badge(dark=False):
+    "the mark with breathing room, for small inline placements"
+    inner = mark(dark).split("\n", 2)[2].rsplit("</svg>", 1)[0]
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600"'
+            ' role="img" aria-label="Marine Sensitivity Toolkit">\n'
+            '  <title>Marine Sensitivity Toolkit</title>\n'
+            f'  <g transform="translate(44,44)">{inner}</g>\n</svg>')
+
 files = {
+    "mst-mark-badge.svg": badge(dark=False),
     "mst-mark.svg":      mark(dark=False),
     "mst-mark-dark.svg": mark(dark=True),
     "mst-logo.svg":      lockup(dark=False),
@@ -187,6 +196,11 @@ for name, svg in files.items():
 renders = [("mst-mark.svg", "mst-mark-512.png", 512, 512),
            ("mst-mark-dark.svg", "mst-mark-dark-512.png", 512, 512),
            ("mst-mark.svg", "mst-mark-192.png", 192, 192),
+           # a padded square for places that set the logo inline beside text --
+           # Cloudflare Access's login header is one: it scales the image to about
+           # 30px tall, so a wide lockup becomes an unreadable smear and the mark
+           # alone is what works. The padding keeps the ring off the wordmark.
+           ("mst-mark-badge.svg", "mst-mark-badge-256.png", 256, 256),
            ("mst-logo.svg", "mst-logo.png", 1200, 300),
            ("mst-logo-dark.svg", "mst-logo-dark.png", 1200, 300),
            ("mst-hero.svg", "mst-hero.png", 1600, 640),
