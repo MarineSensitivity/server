@@ -87,7 +87,9 @@ file.marinesensitivity.org {
 #
 # Named "storage" rather than "s3" so the URL survives a move to another
 # provider.
-storage.marinesensitivity.org {
+# storage.oceanmetrics.io is the same bucket under the Ocean Metrics brand (the
+# gazetteer/ prefix is published there first; marine-atlas/ keeps its old links).
+storage.marinesensitivity.org, storage.oceanmetrics.io {
 	encode zstd gzip
 
 	log {
@@ -122,7 +124,7 @@ Disallow: /*.zip$
 	# multi-GB database dump -- which is technically public but must not be
 	# advertised or reachable here, even by exact path. This allow-list is the
 	# server-side half of the restriction the index generator applies.
-	@atlas path_regexp atlas ^/marine-atlas(/|$)
+	@atlas path_regexp atlas ^/(marine-atlas|gazetteer)(/|$)
 	handle @atlas {
 		# folder URL -> the index.html object standing in for a listing
 		@dir path_regexp dir ^(.*)/$
@@ -141,7 +143,7 @@ Disallow: /*.zip$
 		header Content-Type "text/plain; charset=utf-8"
 		respond `Not found.
 
-Browsable: /marine-atlas/
+Browsable: /marine-atlas/ and /gazetteer/
 Start here: https://storage.marinesensitivity.org/marine-atlas/
 ` 404
 	}
@@ -376,3 +378,8 @@ pmtiles.marinesensitivity.org {
 		}
 	}
 }
+
+# erddap.oceanmetrics.io: the vhost lives in its own repo (oceanmetrics/erddap,
+# checked out under /share/github, which this container mounts); the erddap
+# compose joins this stack's `server_default` network so `erddap:8080` resolves.
+import /share/github/oceanmetrics/erddap/caddy/Caddyfile.erddap
