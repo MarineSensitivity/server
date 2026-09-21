@@ -54,6 +54,12 @@ handle_path /docs/* {
 	file_server
 }
 
+# --- the atlas app: /{ver}/atlas/... -> the static build, + its session.json -
+# in its own file (atlas_preview_routes.caddy) so caddy/test/atlas_routes_local.sh
+# can exercise it standalone, on this laptop's homebrew caddy, with no jwtauth
+# plugin required. Imported BEFORE the landing-page catch-all below.
+import atlas_preview_routes.caddy
+
 # --- landing page: lists the restricted releases from versions.json --------
 handle {
 	root * /share/github/MarineSensitivity/server/caddy/preview

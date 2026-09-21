@@ -115,6 +115,42 @@ invited reviewers only. Everything else stays public and unchanged.
   `MS_PREVIEW=1` — the public instance has no code path that renders a restricted release.
 - **Setup + operations runbook:** [`cloudflare/README.md`](cloudflare/README.md).
 
+### The atlas app (restricted releases)
+
+`atlas` (the static Svelte app, `github.com/MarineSensitivity/atlas`) publishes its public releases
+to GitHub Pages' `gh-pages` branch, which cannot be gated — so a **restricted** atlas release is
+served here instead, at `preview…/{ver}/atlas/`, the same `dist/` and the same commit, just a
+different door. It needs no app process (unlike scores/species): it is a static build, served by
+`caddy/atlas_preview_routes.caddy` straight off disk.
+
+- **What the block does:** `/{ver}/atlas` 308s to `/{ver}/atlas/` (query intact); `/{ver}/atlas/`
+  and everything under it serve `/share/atlas_preview` (`index.html`/`report.html` `no-cache`, no
+  SPA fallback — an unknown path is a real 404); `/{ver}/atlas/session.json` is **synthesized** by
+  Caddy (never a file on disk) as `{"preview":true,"ver":"<from the URL path>","user":"<the
+  verified Access identity>"}`, `Cache-Control: no-store` — this is the app's one door into preview
+  mode (`atlas/src/lib/release/session.ts`). Path traversal is refused (Caddy's path matchers clean
+  `.`/`..` — encoded or not — before testing, and `file_server` sanitizes again before opening a
+  file). Tested locally (routing only, no Access) by `caddy/test/atlas_routes_local.sh`; the auth
+  half is in `caddy/test/run.sh`, run on the server by `DEPLOY_CADDY`.
+- **Host-state:** `/share/atlas_preview` must be owned by uid 1000 (`sudo chown 1000:1000
+  /share/atlas_preview`) before the first `docker compose up` — same requirement, same reason, as
+  `/share/docs_preview`. The `atlas-preview` sidecar (`docker-compose.yml`, a copy of
+  `docs-preview`) polls `MarineSensitivity/atlas`'s `gh-pages` branch into it every 5 minutes as
+  uid 1000, and tolerates the branch not existing yet.
+- **Access:** covered by the existing per-version application (`preview.../{ver}`,
+  `cloudflare/access.sh`) with no changes — Cloudflare Access applications are scoped by hostname +
+  **path prefix**, and `/{ver}/atlas/` is a subpath of that same `/{ver}` prefix already gating
+  `/{ver}/scores/` and `/{ver}/species/`. A v9 reviewer's existing access covers `/v9/atlas/` the
+  moment this ships; nothing to run in `access.sh`.
+- **Hand-off to deploy:** this is a branch for another session to review and deploy under its own
+  flag — `DEPLOY_CADDY=1` in `release_marine-atlas.qmd` (which validates the Caddyfile and runs
+  `caddy/test/run.sh` before restarting; it will not restart on a red test). `DEPLOY_ACCESS=1` is
+  **not** needed for this change (see Access, above).
+- **Rollback:** revert this commit and `DEPLOY_CADDY=1` again — the atlas routes disappear and
+  `/{ver}/atlas/` stops resolving; `atlas-preview`'s clone under `/share/atlas_preview` is harmless
+  to leave in place (nothing serves it once the routes are gone). The public `atlas` app and its
+  `gh-pages` branch are untouched either way.
+
 ## Connect
 
 ```bash

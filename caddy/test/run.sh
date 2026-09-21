@@ -28,9 +28,11 @@ trap cleanup EXIT
 docker run -d --name "$name" --network "$net" \
   -v "$repo/caddy/preview_routes.caddy:/etc/caddy/preview_routes.caddy:ro" \
   -v "$repo/caddy/app_version_routes.caddy:/etc/caddy/app_version_routes.caddy:ro" \
+  -v "$repo/caddy/atlas_preview_routes.caddy:/etc/caddy/atlas_preview_routes.caddy:ro" \
   -v "$here/preview_routes.test.Caddyfile:/etc/caddy/Caddyfile:ro" \
   -v "$repo/caddy/preview:/share/github/MarineSensitivity/server/caddy/preview:ro" \
   -v /share/docs_preview:/share/docs_preview:ro \
+  -v /share/atlas_preview:/share/atlas_preview:ro \
   "$img" caddy run --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
 sleep 3
 
@@ -101,5 +103,28 @@ req "/docs/" "${auth[@]}"
 [ "$CODE" = 200 ] && ok "/docs/ serves the gh-pages-preview clone" || bad "docs" "code=$CODE"
 
 docker run --rm --network "$net" "$curl_img" -s -m 30 -o /dev/null -D - "${auth[@]}" "http://$name:8080/" | grep -qi "x-robots-tag: noindex" && ok "X-Robots-Tag noindex" || bad "X-Robots-Tag" "missing"
+
+# --- atlas: /{ver}/atlas/... -> caddy/atlas_preview_routes.caddy -----------
+# bare-string/bool/number JSON field extraction, same no-jq policy as meta()
+# above -- session.json is JSON, not the apps' HTML meta tags.
+jf() { grep -o "\"$1\"[[:space:]]*:[[:space:]]*[^,}]*" "$body" | head -1 | sed -E 's/.*:[[:space:]]*//; s/^"//; s/"$//'; }
+
+req "/$ver/atlas/";                             { [ "$CODE" = 401 ] || [ "$CODE" = 302 ]; } && ok "atlas: no token -> 401/302" || bad "atlas no token" "$CODE"
+
+req "/$ver/atlas/" "${auth[@]}"
+[ "$CODE" = 200 ] && ok "/$ver/atlas/ -> app, with a token" || bad "/$ver/atlas/" "code=$CODE"
+
+req "/$ver/atlas/session.json" "${auth[@]}"
+if [ "$CODE" = 200 ] && [ "$(jf preview)" = true ] && [ "$(jf ver)" = "$ver" ] && grep -q ggicci "$body"; then
+  ok "/$ver/atlas/session.json -> preview=true, ver=$ver, user=ggicci (the test JWT's identity)"
+else
+  bad "/$ver/atlas/session.json" "code=$CODE preview=$(jf preview) ver=$(jf ver)"
+fi
+
+req "/$ver/atlas?probe=1" "${auth[@]}"
+[ "$CODE" = 308 ] && [ "$LOC" = "http://$name:8080/$ver/atlas/?probe=1" ] && ok "/$ver/atlas -> 308 /$ver/atlas/ (query intact)" || bad "atlas noslash redirect" "code=$CODE loc=$LOC"
+
+req "/$ver/atlas/../../etc/passwd" "${auth[@]}"
+[ "$CODE" != 200 ] && ok "atlas traversal refused (code=$CODE, never 200)" || bad "atlas traversal" "code=$CODE"
 
 if [ "$fails" -eq 0 ]; then echo "PREVIEW_ROUTES_OK"; else echo "PREVIEW_ROUTES_FAILED ($fails)"; exit 1; fi

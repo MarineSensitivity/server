@@ -1,0 +1,79 @@
+# atlas_preview_routes.caddy — the URL surface of the atlas app on the
+# signed-in preview host.
+#
+# Imported by preview_routes.caddy (which the preview.marinesensitivity.org
+# vhost imports) BEFORE the landing-page catch-all `handle`, AND by
+# caddy/test/atlas_routes_local.sh's throwaway Caddyfile, so what the local
+# test proves is (routing-wise) the same file production runs -- the local
+# test just has no jwtauth in front of it (this laptop's homebrew caddy has no
+# jwtauth plugin), so it asserts routing only; caddy/test/run.sh is what proves
+# the auth gate on the server. Everything here runs AFTER the vhost's jwtauth
+# in production: an unauthenticated request never reaches these routes there.
+#
+# THE VERSION IS THE PATH (same convention as app_version_routes.caddy). The
+# atlas build is base-relative with no client router (atlas/CLAUDE.md, "relative
+# base"), so the SAME dist/ runs unmodified at /{ver}/atlas/ here or at
+# marinesensitivity.org/atlas/?ver={ver} on the public host -- same commit,
+# different door. session.json existing, same-origin, with `{"preview":true}` in
+# its body is the ONLY thing that puts the app in preview mode
+# (atlas/src/lib/release/session.ts) -- so what it says must come only from
+# things a client cannot forge: `ver` from the URL PATH this vhost's Access
+# application already scoped and authorized (never from ?ver= or a header), and
+# `user` from the claim jwtauth verified off the signed Cloudflare Access JWT.
+
+@vatlas_noslash path_regexp van ^/(v[0-9]+[a-z]?)/atlas$
+redir @vatlas_noslash {path}/?{query} 308
+
+@vatlas path_regexp vatlas ^/(v[0-9]+[a-z]?)/atlas(/.*)$
+handle @vatlas {
+	# a bare `route` (no matcher: we are already gated by @vatlas) so these
+	# sub-directives run in the LITERAL order written -- `handle` (above and
+	# below) would otherwise let Caddy's automatic directive sort run `rewrite`
+	# before the session.json check, which then never matches (the prefix it
+	# tests for is already stripped) and falls through to file_server, which
+	# happily serves the FIXTURE session.json file. Caught by
+	# caddy/test/atlas_routes_local.sh before this comment existed.
+	route {
+		# session.json is SYNTHESIZED here -- never a file on disk. Matched
+		# before the rewrite/file_server below so a same-named file in the
+		# atlas build (there isn't one; the build never emits it) could not be
+		# served instead.
+		@atlas_session path_regexp ^/v[0-9]+[a-z]?/atlas/session\.json$
+		handle @atlas_session {
+			header Cache-Control "no-store"
+			header Content-Type "application/json"
+			# {re.vatlas.1} is the PATH capture above (never {query.ver}: a client
+			# must not be able to name its own preview version) and
+			# {http.auth.user.id} is the claim jwtauth already verified off the
+			# signed Access JWT (an email, or a service token's common_name/sub
+			# -- see the Caddyfile's user_claims), never text a request
+			# supplies. Neither can carry a `"` or control character into this
+			# JSON: the path capture is constrained to [0-9a-z] by the regexp
+			# above, and the auth claim is a value Cloudflare's JWKS-verified
+			# JWT set, not client-controlled input -- so there is nothing here
+			# for a request to break out with.
+			respond `{"preview":true,"ver":"{re.vatlas.1}","user":"{http.auth.user.id}"}` 200
+		}
+
+		# strip the /{ver}/atlas prefix; what's left is the path inside the
+		# atlas dist/ tree the atlas-preview sidecar clones to
+		# /share/atlas_preview. ATLAS_PREVIEW_ROOT lets
+		# caddy/test/atlas_routes_local.sh point this at a small fixture tree
+		# instead (no /share on a laptop); unset, in production and in
+		# caddy/test/run.sh alike, it is exactly /share/atlas_preview.
+		rewrite * {re.vatlas.2}
+		root * {$ATLAS_PREVIEW_ROOT:/share/atlas_preview}
+		# "/" (the common case: a reviewer's URL ends in the version, no
+		# filename) resolves to index.html INSIDE file_server, after these
+		# header directives already ran -- so the matcher has to name the
+		# directory path too, not just the literal filename.
+		@atlas_index path / /index.html
+		header @atlas_index Cache-Control "no-cache"
+		header /report.html Cache-Control "no-cache"
+		# no `try_files`/SPA fallback: the app is router-free (atlas/CLAUDE.md),
+		# so an unknown path under dist/ is a real 404, never index.html.
+		# file_server's own path sanitization (it cleans against root before
+		# opening) is what refuses `..` traversal here, encoded or not.
+		file_server
+	}
+}
