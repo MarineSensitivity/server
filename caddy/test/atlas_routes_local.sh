@@ -40,13 +40,22 @@ caddy validate --config "$testfile" --adapter caddyfile
 caddy adapt --config "$testfile" --adapter caddyfile > /dev/null
 echo "adapt/validate OK"
 
-# --- Opus gate review of e6fdef5, finding 2: prove authentication sorts
-# BEFORE every atlas route in the COMPILED route list, not just by reading the
-# Caddyfile source (Caddy's directive sort reorders top-level directives by
-# category, not by the order they are written — see the header comment on
-# the no-slash redirect in atlas_preview_routes.caddy). This laptop has no
-# jwtauth plugin, so `basic_auth` stands in: it occupies the exact same
-# "authentication" handler slot jwtauth does, so the same proof carries over.
+# --- Opus gate review of e6fdef5, finding 2 (and its fix-round-2 gap): prove
+# authentication runs FIRST -- period -- in the COMPILED route tree, not by
+# reading the Caddyfile source (Caddy's directive sort reorders top-level
+# directives by category, not by the order they are written) and not by
+# recognizing specific matcher names (the fix-round-1 version of this check
+# only looked at routes carrying the `van`/`vatlas` matchers, so a NEW
+# top-level directive with no matcher at all -- e.g. a stray `redir` or
+# `header` added later -- sorted ahead of auth and slipped straight past it).
+# This laptop has no jwtauth plugin, so `basic_auth` stands in: it occupies
+# the exact same "authentication" handler slot jwtauth does, so the proof
+# carries over. General rule: walk the WHOLE compiled route tree in the order
+# Caddy would execute it if every matcher matched (the adversarial
+# worst case -- an attacker picks the request), flattening into `subroute`
+# (what `handle`/`route` compile to); the very FIRST handler encountered,
+# with no exceptions for its type or its matcher, must be `authentication`.
+# If anything else is first, SOMETHING in this file can answer before auth.
 sortcad=$(mktemp); sortjson=$(mktemp)
 # caddy-jwt's own README hash, reused here only as "some bcrypt hash caddy
 # will accept" -- this config is adapted, never run.
@@ -65,20 +74,30 @@ CADDYEOF
 if caddy adapt --config "$sortcad" --adapter caddyfile > "$sortjson" 2>/tmp/atlas_routes_local.sort.err; then
   if python3 - "$sortjson" <<'PYEOF'
 import json, sys
+
+def flatten(routes):
+    # pre-order walk, in Caddy's own execution order: top-level routes array
+    # in order, and within each matched route's handle list, in order --
+    # recursing into `subroute` (what `handle`/`route` compile to) before
+    # moving to the next top-level entry. Matchers are ignored entirely: this
+    # is the worst case where an attacker's request satisfies every matcher
+    # that could possibly matter.
+    for r in routes:
+        for h in r.get("handle", []):
+            handler = h.get("handler")
+            if handler == "subroute":
+                yield from flatten(h.get("routes", []))
+            else:
+                yield handler
+
 routes = json.load(open(sys.argv[1]))["apps"]["http"]["servers"]["srv0"]["routes"]
-auth_idx = next((i for i, r in enumerate(routes)
-                  if "authentication" in [h.get("handler") for h in r.get("handle", [])]), None)
-atlas_idxs = [i for i, r in enumerate(routes)
-              for m in (r.get("match") or [])
-              if (m.get("path_regexp") or {}).get("name") in ("van", "vatlas")]
-if auth_idx is None:
-    sys.exit("no authentication route found")
-if not atlas_idxs:
-    sys.exit("no atlas route found (van/vatlas matcher missing)")
-early = [i for i in atlas_idxs if i <= auth_idx]
-if early:
-    sys.exit(f"authentication at index {auth_idx}, but atlas route(s) at {early} sort BEFORE or WITH it")
-print(f"authentication at {auth_idx}; atlas routes at {sorted(atlas_idxs)} (all after)")
+seq = list(flatten(routes))
+if not seq:
+    sys.exit("no handlers found at all")
+if seq[0] != "authentication":
+    sys.exit(f"first handler in execution order is {seq[0]!r}, not authentication "
+              f"-- it can answer before auth runs (full order: {seq})")
+print(f"authentication runs first; full handler order: {seq}")
 PYEOF
   then
     sort_ok=1

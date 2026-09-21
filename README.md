@@ -143,10 +143,17 @@ different door. It needs no app process (unlike scores/species): it is a static 
   commit (Opus finding 2). **Pre-existing, elsewhere, NOT touched by this change:** the redirects in
   `caddy/app_version_routes.caddy` and the query→path rules in `caddy/preview_routes.caddy` have
   this same bare-redirect-ahead-of-`authentication` shape. Harmless (a 308 to another URL under the
-  same gate leaks no content) and another session's files — flagged here, not fixed here.
+  same gate leaks no content) and another session's files — flagged here, not fixed here. The same
+  general check (below) should be run on the server against the REAL `preview.marinesensitivity.org`
+  Caddyfile — `docker compose exec caddy caddy adapt --config /etc/caddy/Caddyfile --adapter
+  caddyfile`, then confirm the vhost's FIRST compiled route is `authentication` — which would flag
+  those same two pre-existing redirects too; that is a finding for the server's owner to act on, not
+  something this branch changes.
   Tested locally (routing only, no Access) by `caddy/test/atlas_routes_local.sh`, including a
-  `basic_auth` stand-in (this laptop has no jwtauth plugin) that proves the sort order from the
-  *compiled* route list, not just by reading the Caddyfile; the auth half is in
+  `basic_auth` stand-in (this laptop has no jwtauth plugin) that walks the whole COMPILED route tree
+  (not specific matcher names — a fix-round-1 version of this check missed a bare, unmatchered
+  `redir` or `header` added later, since it only looked for the `van`/`vatlas` matchers) and asserts
+  the very first handler encountered, whatever it is, is `authentication`; the auth half is in
   `caddy/test/run.sh`, run on the server by `DEPLOY_CADDY`. **Not asserted anywhere, on purpose:** a
   v8 token refused on `/v9/atlas/`. This origin's jwtauth has one flat `audience_whitelist` covering
   every Access application's AUD (the same shape the Shiny routes already rely on), so per-version
