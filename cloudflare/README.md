@@ -204,8 +204,14 @@ in place, no new AUDs, nothing else to deploy. New reviewers get in on their nex
 #    workflows/data/versions.csv: v9 -> restricted, then
 cd ~/Github/MarineSensitivity/workflows && quarto render build_version_manifest.qmd
 # 2. add PREVIEW_REVIEWERS_V9=… to .env, and add v9 to PREVIEW_RESTRICTED_VERSIONS (a regex
-#    alternation, e.g. "v8|v9": the PUBLIC app host 302s these versions to the review host —
-#    DEPLOY_CADDY refuses to restart Caddy if it disagrees with versions.json), then create its applications
+#    alternation: the PUBLIC app host 302s these versions to the review host — DEPLOY_CADDY refuses
+#    to restart Caddy if it disagrees with versions.json). KEEP THE DOUBLE QUOTES:
+#        PREVIEW_RESTRICTED_VERSIONS="v7b|v8|v9"
+#    .env has two readers. docker compose strips the quotes and hands Caddy the bare alternation;
+#    bash (the `. ./.env` below, and DEPLOY_ACCESS=1) reads an unquoted `v8|v9` as a PIPELINE —
+#    "v9: command not found", the variable left unset, and under `set -e` the whole command aborts
+#    before access.sh runs. That is how DEPLOY_ACCESS=1 was dead from 2026-08-28 to 2026-09-21.
+#    Then create its applications:
 ssh msens 'cd /share/github/MarineSensitivity/server && set -a && . ./.env && set +a && cloudflare/access.sh'
 # 3. paste the printed CF_ACCESS_AUD="…" line into .env (it lists EVERY application's AUD), then
 DEPLOY_APPS=1 quarto render release_marine-atlas.qmd     # apps first: DEPLOY_CADDY's routes test asserts them
