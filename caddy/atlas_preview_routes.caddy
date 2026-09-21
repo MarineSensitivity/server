@@ -7,8 +7,12 @@
 # test proves is (routing-wise) the same file production runs -- the local
 # test just has no jwtauth in front of it (this laptop's homebrew caddy has no
 # jwtauth plugin), so it asserts routing only; caddy/test/run.sh is what proves
-# the auth gate on the server. Everything here runs AFTER the vhost's jwtauth
-# in production: an unauthenticated request never reaches these routes there.
+# the auth gate on the server. This file's own directives run AFTER the
+# vhost's jwtauth in production PROVIDED each one sorts into a slot Caddy
+# places after `authentication` -- which is not automatic (see the `handle`
+# wrapper on the no-slash redirect below, and finding 2 of the Opus gate
+# review of e6fdef5); a bare top-level `redir`/`respond` here would NOT wait
+# for jwtauth.
 #
 # THE VERSION IS THE PATH (same convention as app_version_routes.caddy). The
 # atlas build is base-relative with no client router (atlas/CLAUDE.md, "relative
@@ -16,13 +20,42 @@
 # marinesensitivity.org/atlas/?ver={ver} on the public host -- same commit,
 # different door. session.json existing, same-origin, with `{"preview":true}` in
 # its body is the ONLY thing that puts the app in preview mode
-# (atlas/src/lib/release/session.ts) -- so what it says must come only from
-# things a client cannot forge: `ver` from the URL PATH this vhost's Access
-# application already scoped and authorized (never from ?ver= or a header), and
-# `user` from the claim jwtauth verified off the signed Cloudflare Access JWT.
+# (atlas/src/lib/release/session.ts) -- so `ver` comes only from the URL PATH
+# this vhost's Access application already scoped and authorized (never from
+# ?ver= or a header). RULED DEVIATION from the atlas-9 subplan's sample block:
+# the subplan's body also carried a `"user"` field from {http.auth.user.id}.
+# Dropped (Opus gate review of e6fdef5, finding 1): the app never reads it (if
+# an identity is ever needed, Cloudflare's own same-origin
+# /cdn-cgi/access/get-identity is the source, not this file), and a claim
+# value interpolated raw into a hand-built JSON string is one stray `"` away
+# from smuggling an extra key -- e.g. a claim of `x","data":"https://evil/`
+# would produce valid JSON with a `data` key, which a PREVIEW session's
+# dataBase() honors as the data origin (atlas/src/lib/release/dataBase.ts).
+# `ver` has no such risk (path_regexp already constrains it to [0-9a-z]), but
+# `user` did, so it is gone rather than merely re-argued as safe.
+#
+# `redir` below is wrapped in `handle` for the same reason the session check
+# below is wrapped in `route`: Caddy's automatic directive sort, not source
+# order, decides what runs first. A bare `redir` (or `respond`) sorts into the
+# same slot as most other rewrite-ish directives, which is AHEAD of
+# `authentication` (jwtauth/basic_auth) in Caddy's default order -- so on the
+# signed-in vhost, an UNAUTHENTICATED request to the no-slash path got its 308
+# before jwtauth ever ran (Opus gate review, finding 2; proved by
+# caddy/test/atlas_routes_local.sh's sort-order check, which stands in
+# basic_auth for jwtauth since this laptop has no jwtauth plugin). `handle`
+# sorts into the SAME slot as `authentication`, which Caddy then orders by
+# position in the compiled route list -- i.e. by where it sits in the
+# Caddyfile the vhost actually loads (the parent Caddyfile's jwtauth comes
+# before this whole `import`), so wrapping it here is enough to put it after.
+# The pre-existing redirects in app_version_routes.caddy and the query->path
+# rules in preview_routes.caddy have this SAME bare-redir-ahead-of-auth shape
+# -- see the README hand-off: same ordering, pre-existing, harmless (a 308 to
+# another URL under the same gate leaks no content), another session's files.
 
 @vatlas_noslash path_regexp van ^/(v[0-9]+[a-z]?)/atlas$
-redir @vatlas_noslash {path}/?{query} 308
+handle @vatlas_noslash {
+	redir {path}/?{query} 308
+}
 
 @vatlas path_regexp vatlas ^/(v[0-9]+[a-z]?)/atlas(/.*)$
 handle @vatlas {
@@ -37,22 +70,32 @@ handle @vatlas {
 		# session.json is SYNTHESIZED here -- never a file on disk. Matched
 		# before the rewrite/file_server below so a same-named file in the
 		# atlas build (there isn't one; the build never emits it) could not be
-		# served instead.
+		# served instead. EXACT lowercase "session.json" only: @atlas_session
+		# below is case-SENSITIVE by design, and @atlas_session_anycase is the
+		# net that catches every other spelling and refuses it with a plain
+		# 404 -- never falling through to file_server, which on a
+		# case-INSENSITIVE filesystem (macOS/APFS default; caught by
+		# caddy/test/atlas_routes_local.sh) would resolve SESSION.JSON /
+		# Session.Json / session.json. (trailing dot) to the real file on
+		# disk regardless of what path_regexp tested (Opus gate review of
+		# e6fdef5, finding 3). `route` (not `handle`) again preserves literal
+		# order: @atlas_session must be checked, and win, BEFORE the broader
+		# @atlas_session_anycase net.
 		@atlas_session path_regexp ^/v[0-9]+[a-z]?/atlas/session\.json$
 		handle @atlas_session {
 			header Cache-Control "no-store"
 			header Content-Type "application/json"
-			# {re.vatlas.1} is the PATH capture above (never {query.ver}: a client
-			# must not be able to name its own preview version) and
-			# {http.auth.user.id} is the claim jwtauth already verified off the
-			# signed Access JWT (an email, or a service token's common_name/sub
-			# -- see the Caddyfile's user_claims), never text a request
-			# supplies. Neither can carry a `"` or control character into this
-			# JSON: the path capture is constrained to [0-9a-z] by the regexp
-			# above, and the auth claim is a value Cloudflare's JWKS-verified
-			# JWT set, not client-controlled input -- so there is nothing here
-			# for a request to break out with.
-			respond `{"preview":true,"ver":"{re.vatlas.1}","user":"{http.auth.user.id}"}` 200
+			# {re.vatlas.1} is the PATH capture above -- never {query.ver} (a
+			# client must not be able to name its own preview version). No
+			# `user` field: see the header comment on why it was dropped
+			# (Opus gate review, finding 1). The body is EXACTLY these two
+			# keys; caddy/test/atlas_routes_local.sh asserts that, not just
+			# that `preview`/`ver` are present.
+			respond `{"preview":true,"ver":"{re.vatlas.1}"}` 200
+		}
+		@atlas_session_anycase path_regexp (?i)^/v[0-9]+[a-z]?/atlas/session\.json\.?$
+		handle @atlas_session_anycase {
+			respond 404
 		}
 
 		# strip the /{ver}/atlas prefix; what's left is the path inside the

@@ -126,26 +126,73 @@ different door. It needs no app process (unlike scores/species): it is a static 
 - **What the block does:** `/{ver}/atlas` 308s to `/{ver}/atlas/` (query intact); `/{ver}/atlas/`
   and everything under it serve `/share/atlas_preview` (`index.html`/`report.html` `no-cache`, no
   SPA fallback — an unknown path is a real 404); `/{ver}/atlas/session.json` is **synthesized** by
-  Caddy (never a file on disk) as `{"preview":true,"ver":"<from the URL path>","user":"<the
-  verified Access identity>"}`, `Cache-Control: no-store` — this is the app's one door into preview
-  mode (`atlas/src/lib/release/session.ts`). Path traversal is refused (Caddy's path matchers clean
-  `.`/`..` — encoded or not — before testing, and `file_server` sanitizes again before opening a
-  file). Tested locally (routing only, no Access) by `caddy/test/atlas_routes_local.sh`; the auth
-  half is in `caddy/test/run.sh`, run on the server by `DEPLOY_CADDY`.
-- **Host-state:** `/share/atlas_preview` must be owned by uid 1000 (`sudo chown 1000:1000
-  /share/atlas_preview`) before the first `docker compose up` — same requirement, same reason, as
-  `/share/docs_preview`. The `atlas-preview` sidecar (`docker-compose.yml`, a copy of
-  `docs-preview`) polls `MarineSensitivity/atlas`'s `gh-pages` branch into it every 5 minutes as
-  uid 1000, and tolerates the branch not existing yet.
+  Caddy (never a file on disk) as EXACTLY `{"preview":true,"ver":"<from the URL path>"}`,
+  `Cache-Control: no-store` — this is the app's one door into preview mode
+  (`atlas/src/lib/release/session.ts`). There is **no `"user"` field** — a ruled deviation from the
+  atlas-9 subplan's sample block, found by the Opus gate review of the first commit (e6fdef5):
+  interpolating a raw Access claim into hand-built JSON is one stray `"` in a claim value away from
+  smuggling an extra key (e.g. a `data` key, which a preview session's `dataBase()` would then
+  honor as the data origin) — dropped rather than re-argued as safe, since the app never reads it
+  anyway. Path traversal is refused, case-insensitively and including a bare trailing dot
+  (`SESSION.JSON`, `Session.Json`, `session.json.` all 404 — a second, case-insensitive matcher
+  refuses anything that isn't the exact lowercase spelling, so a case-insensitive filesystem can't
+  leak the real file the way `file_server`'s own case-sensitive-regex-but-case-insensitive-lookup
+  gap would otherwise allow). Every route that can answer unauthenticated is wrapped in `handle` so
+  it sorts AFTER `authentication` in Caddy's compiled route list — a bare `redir`/`respond` sorts
+  ahead of it, which is exactly how the no-slash redirect answered before jwtauth in the first
+  commit (Opus finding 2). **Pre-existing, elsewhere, NOT touched by this change:** the redirects in
+  `caddy/app_version_routes.caddy` and the query→path rules in `caddy/preview_routes.caddy` have
+  this same bare-redirect-ahead-of-`authentication` shape. Harmless (a 308 to another URL under the
+  same gate leaks no content) and another session's files — flagged here, not fixed here.
+  Tested locally (routing only, no Access) by `caddy/test/atlas_routes_local.sh`, including a
+  `basic_auth` stand-in (this laptop has no jwtauth plugin) that proves the sort order from the
+  *compiled* route list, not just by reading the Caddyfile; the auth half is in
+  `caddy/test/run.sh`, run on the server by `DEPLOY_CADDY`. **Not asserted anywhere, on purpose:** a
+  v8 token refused on `/v9/atlas/`. This origin's jwtauth has one flat `audience_whitelist` covering
+  every Access application's AUD (the same shape the Shiny routes already rely on), so per-version
+  entitlement is enforced by **Cloudflare Access at the edge**, not by this origin check — a token
+  valid for any restricted version reaches the origin able to request any other version's
+  `/{ver}/atlas/` too. Hardening option, left to the server's owner: a per-version AUD and one
+  `handle` per version, mirroring the per-version Access applications `cloudflare/access.sh` already
+  creates.
+- **Hand-off to deploy** (this is a branch for another session to review and deploy under its own
+  flag; do these IN ORDER):
+  1. **Host state first.** `sudo mkdir -p /share/atlas_preview && sudo chown 1000:1000
+     /share/atlas_preview` — **before** the first `docker compose up` that includes this change.
+     Docker auto-creates a missing bind-mount source as `root:root`, and if that happens first the
+     `atlas-preview` sidecar can never write its clone (same failure mode, same fix, as
+     `/share/docs_preview`).
+  2. **This is not a `caddy reload`.** The new bind mount (`atlas_preview_routes.caddy`, the
+     read-only `/share/atlas_preview` mount) and the new `atlas-preview` service both need the
+     containers recreated: `docker compose up -d caddy atlas-preview` (a reload alone would keep
+     running the OLD caddy container, which never sees the new mount).
+  3. **`DEPLOY_CADDY=1`'s green bar means three things passed, in order:** `docker compose config -q`
+     (the compose file itself parses), then `caddy validate --config /etc/caddy/Caddyfile` run
+     **inside the recreated container** (`docker compose exec caddy caddy validate --config
+     /etc/caddy/Caddyfile`) — validating the file on disk proves nothing if the running container is
+     still the pre-recreate one — then `caddy/test/run.sh`. A red result at any step must stop the
+     chunk before it restarts anything live.
+  4. **Confirm the clone actually happened:** `test -d /share/atlas_preview/.git` (or `ls
+     /share/atlas_preview`) after step 2 — a wrong owner (step 1 skipped) or a `gh-pages` branch
+     that doesn't exist yet both leave this empty, and `/{ver}/atlas/` then 404s on everything with
+     no obvious error anywhere else.
+  5. **Confirm `CF_ZONE_ID` is set** (server `.env`) so `cloudflare/access.sh`'s cache-bypass rule
+     for `preview.marinesensitivity.org` exists. Without it, `session.json`'s freshness depends on
+     `Cache-Control: no-store` alone reaching every layer between the browser and this origin — the
+     header is correct either way, but the zone rule is the belt to its suspenders. `access.sh
+     --dry-run` (no credentials needed) shows whether it would create one.
+  6. **Re-run `caddy/test/atlas_routes_local.sh` on the Linux server** (same script, `bash
+     caddy/test/atlas_routes_local.sh`) to confirm Opus finding 3's case-variant leak was a macOS/APFS
+     filesystem property, not the routing itself — the fix (the case-insensitive refusal matcher) is
+     filesystem-independent and should read identically green on both, but the ORIGINAL bug (before
+     that matcher existed) would not have reproduced on a case-sensitive Linux filesystem, and that
+     asymmetry is worth confirming once rather than assuming.
+  `DEPLOY_ACCESS=1` is **not** needed for this change (see Access, above).
 - **Access:** covered by the existing per-version application (`preview.../{ver}`,
   `cloudflare/access.sh`) with no changes — Cloudflare Access applications are scoped by hostname +
   **path prefix**, and `/{ver}/atlas/` is a subpath of that same `/{ver}` prefix already gating
   `/{ver}/scores/` and `/{ver}/species/`. A v9 reviewer's existing access covers `/v9/atlas/` the
   moment this ships; nothing to run in `access.sh`.
-- **Hand-off to deploy:** this is a branch for another session to review and deploy under its own
-  flag — `DEPLOY_CADDY=1` in `release_marine-atlas.qmd` (which validates the Caddyfile and runs
-  `caddy/test/run.sh` before restarting; it will not restart on a red test). `DEPLOY_ACCESS=1` is
-  **not** needed for this change (see Access, above).
 - **Rollback:** revert this commit and `DEPLOY_CADDY=1` again — the atlas routes disappear and
   `/{ver}/atlas/` stops resolving; `atlas-preview`'s clone under `/share/atlas_preview` is harmless
   to leave in place (nothing serves it once the routes are gone). The public `atlas` app and its
