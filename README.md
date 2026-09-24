@@ -162,6 +162,59 @@ different door. It needs no app process (unlike scores/species): it is a static 
   `/{ver}/atlas/` too. Hardening option, left to the server's owner: a per-version AUD and one
   `handle` per version, mirroring the per-version Access applications `cloudflare/access.sh` already
   creates.
+- **Parity with scores/species, added 2026-09-24 (rebase onto main + gap-fill, still `atlas-preview`):**
+  three checks the release session asked for, against the same convention `app_version_routes.caddy`
+  already uses for `/scores/`/`/species/`.
+  1. **Version conveyance.** Scores/species are reverse-proxied, so Caddy sets `X-MS-Version` on the
+     upstream request; atlas is a static `file_server` with no upstream to set a header on, so its
+     equivalent is the synthesized `session.json` body (`ver` from the URL PATH only, never `?ver=` or
+     a header — see the "no `user` field" note above). Same guarantee (server-derived, un-forgeable by
+     the client), different mechanism because the serving model differs.
+  2. **`?ver=` deep links now 301 to the path form**, mirroring `@vquery_slash`/`@vquery_noslash`:
+     an UNVERSIONED `/atlas/?ver=v9` (or `/atlas?ver=v9`) 301s to `/v9/atlas/` — it never itself
+     renders content, and it cannot create the "?ver= overrides an already-versioned path" hole,
+     because its matcher requires NO version segment (a request that already has one, e.g.
+     `/v9/atlas/session.json?ver=v8`, keeps hitting the existing "?ver= is INERT" path untouched).
+     Like the scores/species version it mirrors, only `ver` is used to build the destination; the
+     rest of the query is dropped, not carried — a discrepancy in the existing scores/species
+     convention (its own comment says query is carried; the code drops it) that this change matches
+     for consistency rather than silently fixes elsewhere. **Gotcha hit while building this:**
+     `redir <to> <code>` inside a `handle` block, with no explicit matcher, treats a `<to>` value that
+     starts with a literal `/` as an (ambiguous) inline path matcher instead — confirmed via `caddy
+     adapt` compiling the placeholder text itself into a `match.path`, with "301" ending up as the
+     Location header. Fixed with an explicit `redir * /{query.ver}{path} 301` (the bare `*` forces the
+     next token to be read as `to`).
+  3. **A restricted version cannot reach the atlas via `app.marinesensitivity.org` (the public app
+     host) either.** `@restricted_app` in `caddy/Caddyfile` (the same matcher that already sends
+     `/{ver}/scores|species` for a `PREVIEW_RESTRICTED_VERSIONS` version to the review host) now
+     covers `atlas` too. Before this, `/v9/atlas/` on that host fell through to
+     `reverse_proxy rstudio:3838`, which has no idea what `/atlas` is — so the failure mode was
+     already "cannot reach it" (a bogus 404/502), just not a deliberate one; this makes it the SAME
+     redirect-to-review-host behavior scores/species get, and keeps a restricted version's atlas
+     content from ever being requested from the un-gated host, deliberately rather than by accident.
+     `docker-compose.yml`'s `PREVIEW_RESTRICTED_VERSIONS` comment updated to match. This matcher has
+     no automated test on either side (scores/species were never covered either — a pre-existing
+     gap, not one this change introduces); proven by hand locally (`caddy adapt` + `caddy run` against
+     the isolated matcher, `PREVIEW_RESTRICTED_VERSIONS=v8|v9`): `/v9/atlas/?mdl_key=x` → 302 to
+     `https://preview.marinesensitivity.org/v9/atlas/?mdl_key=x` (query intact); `/v7/atlas/` (not
+     restricted) → falls through unmatched; `/v9/atlascanary` (word-boundary check) does not match.
+  **Locally proven, with the real image, end-to-end:** built `caddy/Dockerfile`'s image
+  (`docker compose build caddy` — a real `xcaddy` build, jwtauth plugin included) and ran the FULL
+  production `Caddyfile` through `caddy validate` (needs a stub for the sibling `oceanmetrics/erddap`
+  import and a writable `/share/logs`, neither of which exist on a laptop — worked around with a
+  throwaway stub dir, not committed) — `Valid configuration`, before AND after every edit above. Then
+  ran `caddy/test/run.sh` itself (unmodified logic; only its two hardcoded `/share/...` bind-mount
+  SOURCES were redirected to a scratch dir, since `/share` does not exist locally and this laptop has
+  no `sudo`) against `server_default` with a bare `python -m http.server` standing in for `rstudio`.
+  Result: all 13 atlas assertions green, INCLUDING the ones that need real auth (no-token 401/302,
+  `session.json`'s exact body behind a valid test token, traversal refusal, query-intact redirects) —
+  this is the first time this branch's auth half has run against anything, laptop or server. The 8
+  scores/species assertions that failed are 100% attributable to the stub returning 404 for every
+  path (not a real Shiny app) — pre-existing routing this branch does not touch. **Still genuinely
+  needs the live server:** the real `atlas-preview` sidecar's clone (`ms-app-sha` on the actual built
+  app, not a fixture), the real `rstudio:3839` Shiny process for scores/species, and Cloudflare's own
+  JWKS in place of the test HS256 key (i.e., that Access itself, not just this origin's `jwtauth`
+  verification of a *valid* token, is configured correctly end to end).
 - **Hand-off to deploy** (this is a branch for another session to review and deploy under its own
   flag; do these IN ORDER):
   1. **Host state first.** `sudo mkdir -p /share/atlas_preview && sudo chown 1000:1000
@@ -200,6 +253,15 @@ different door. It needs no app process (unlike scores/species): it is a static 
   **path prefix**, and `/{ver}/atlas/` is a subpath of that same `/{ver}` prefix already gating
   `/{ver}/scores/` and `/{ver}/species/`. A v9 reviewer's existing access covers `/v9/atlas/` the
   moment this ships; nothing to run in `access.sh`.
+- **`CHECK_PREVIEW` (in the `workflows` repo's `release_marine-atlas.qmd`, not this repo — a patch for
+  that session, not made here):** add the same per-version probe already run for `/{ver}/scores/` to
+  `/{ver}/atlas/` and `/{ver}/atlas/session.json`: a version's own service token → 200 + `session.json`'s
+  `ver` matches;
+  no token → 401/302; and (now that `@restricted_app` covers atlas — see above) the PUBLIC
+  `app.marinesensitivity.org/{ver}/atlas/` for a restricted version → 302 to the preview host, query
+  intact. Same reasoning as the existing scores/species probes: this is the assertion that would have
+  caught a version dropped from `PREVIEW_RESTRICTED_VERSIONS`, or the atlas import silently missing
+  from `preview_routes.caddy`, before a reviewer does.
 - **Rollback:** revert this commit and `DEPLOY_CADDY=1` again — the atlas routes disappear and
   `/{ver}/atlas/` stops resolving; `atlas-preview`'s clone under `/share/atlas_preview` is harmless
   to leave in place (nothing serves it once the routes are gone). The public `atlas` app and its

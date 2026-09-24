@@ -155,6 +155,28 @@ refused() { [ -n "$1" ] && [ "$1" != "000" ] && [ "$1" != 200 ]; }
 
 echo "atlas preview routes (local, routing-only) on $base"
 
+# --- ?ver= deep links: an UNVERSIONED /atlas path carrying ?ver= 301s to the
+# canonical path (same convention as app_version_routes.caddy's
+# @vquery_slash/@vquery_noslash for /scores/ and /species/) -- and, like that
+# convention, only the `ver` param is used to build the destination; the rest
+# of the query is dropped, not carried (matches the pre-existing behavior of
+# the scores/species redirect this mirrors, so both surfaces are consistent).
+req "/atlas/?ver=v9&lens=species"
+[ "$CODE" = 301 ] && [ "$LOC" = "$base/v9/atlas/" ] \
+  && ok "/atlas/?ver=v9 -> 301 /v9/atlas/ (never served itself)" \
+  || bad "query->path redirect (slash)" "code=$CODE loc=$LOC"
+
+req "/atlas?ver=v9"
+[ "$CODE" = 301 ] && [ "$LOC" = "$base/v9/atlas/" ] \
+  && ok "/atlas?ver=v9 -> 301 /v9/atlas/ (noslash)" \
+  || bad "query->path redirect (noslash)" "code=$CODE loc=$LOC"
+
+req "/atlas/"
+refused "$CODE" && ! grep -q FIXTURE "$body" && ok "/atlas/ (no ver, no version) -> not served (code=$CODE)" || bad "/atlas/ (bare)" "code=$CODE"
+
+req "/atlas"
+refused "$CODE" && ! grep -q FIXTURE "$body" && ok "/atlas (no ver, no version, no slash) -> not served (code=$CODE)" || bad "/atlas (bare, noslash)" "code=$CODE"
+
 req "/v9/atlas?lens=species&x=1"
 [ "$CODE" = 308 ] && [ "$LOC" = "$base/v9/atlas/?lens=species&x=1" ] \
   && ok "/v9/atlas -> 308, Location keeps ?lens=species&x=1" \

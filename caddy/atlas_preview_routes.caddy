@@ -51,6 +51,37 @@
 # rules in preview_routes.caddy have this SAME bare-redir-ahead-of-auth shape
 # -- see the README hand-off: same ordering, pre-existing, harmless (a 308 to
 # another URL under the same gate leaks no content), another session's files.
+#
+# --- ?ver= deep links -> the canonical path (same convention as
+# app_version_routes.caddy's @vquery_slash/@vquery_noslash for /scores/ and
+# /species/, so an old-format bookmark or a hand-typed guess still resolves).
+# This is the ONLY place a query string ever picks the version for atlas: it
+# fires solely on an UNVERSIONED /atlas path, and only to produce a 301 to the
+# path form -- it never itself renders content. Once a request carries a version in the
+# PATH (the @vatlas/@vatlas_noslash blocks below), ?ver= is inert by design
+# (see @atlas_session's "?ver= query is INERT" test) -- this block cannot
+# create that ambiguity because its own matcher requires NO version segment.
+@atlas_query_slash {
+	path /atlas/
+	query ver=*
+}
+handle @atlas_query_slash {
+	# the bare `*` matcher below is NOT redundant: `redir`'s own arg parser
+	# treats a `to` that starts with a literal `/` as an (ambiguous) inline
+	# path matcher when no matcher is given explicitly -- confirmed by
+	# `caddy adapt` compiling `redir /{query.ver}{path} 301` into a matcher on
+	# the LITERAL (unexpanded) placeholder text and "301" as the Location
+	# header. `*` (match everything -- the block is already scoped by the
+	# `handle` above) forces the next token to be read as `to`.
+	redir * /{query.ver}{path} 301
+}
+@atlas_query_noslash {
+	path /atlas
+	query ver=*
+}
+handle @atlas_query_noslash {
+	redir * /{query.ver}{path}/ 301
+}
 
 @vatlas_noslash path_regexp van ^/(v[0-9]+[a-z]?)/atlas$
 handle @vatlas_noslash {
