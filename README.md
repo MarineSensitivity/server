@@ -317,4 +317,21 @@ docker compose up --build plumber
 sudo apt upgrade
 ```
 
+## Memory ceilings + host swap (2026-09-24 outage)
 
+A Shiny Server app worker (uid 996 `shiny`, inside the `rstudio` container) reached 7.8 GB
+resident on the 16 GB host, which had no swap and no per-container limit. The kernel reclaimed
+page cache for an hour (CPU flat at 32 %, sshd/apps/STAC/API unreachable; EC2 status checks
+green) before the OOM killer fired; an EC2 reboot ended it. Two layers now:
+
+- **`docker-compose.yml` `rstudio: mem_limit: 9g` / `memswap_limit: 9g`** — a runaway worker is
+  OOM-killed inside the container (that Shiny session errors, everything else keeps serving).
+  Apply with `docker compose up -d --no-deps rstudio` (a recreate: the container's R library
+  resets to the image + the msens reconcile at start). `docker inspect rstudio --format
+  '{{.HostConfig.Memory}}'` must print `9663676416`.
+- **`host/swap.sh`** — idempotent 4 GiB `/swapfile` + `vm.swappiness=10`, persisted in fstab and
+  `/etc/sysctl.d/60-msens-swap.conf`. Run once as root; re-run after any host rebuild.
+
+Which app it was is not provable after the fact (Shiny Server OSS wrote no per-app log); the
+container log for that window shows only `ships` (`/srv/shiny-server/ships ->
+/share/github/ecoquants/ricei/app_company`, not an MST app) erroring in `mapgl::mapboxgl`.

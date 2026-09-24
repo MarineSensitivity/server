@@ -98,6 +98,16 @@ services:
       - 8787:8787  # rstudio
       - 3838:3838  # shiny
     restart: unless-stopped
+    # MEMORY CEILING (2026-09-24 outage): a Shiny Server app worker (uid 996 `shiny`) grew to
+    # 7.8 GB resident inside this container; with no cgroup limit and no swap the host spent an
+    # hour reclaiming page cache (ssh, apps, STAC, API all unreachable) before the OOM killer
+    # fired, and only an EC2 reboot ended it. With a ceiling, a runaway worker is killed INSIDE
+    # this container (its Shiny session errors; everything else keeps serving). 9 GB leaves
+    # ~6 GB for erddap/titiler/plumber/stac-api/caddy on the 16 GB host at their measured idle
+    # (~3.2 GB). memswap_limit == mem_limit: this container never spills into the host swap
+    # (host/swap.sh); swap exists so the REST of the host degrades instead of wedging.
+    mem_limit: 9g
+    memswap_limit: 9g
     volumes:
       - /share:/share
       - /share/shiny_apps:/srv/shiny-server
