@@ -195,7 +195,10 @@ RUN installGithub.r \
 # the DEPENDENCY set; the pinned install is the floor that guarantees it.
 #
 # CRAN deps the image lacked, listed explicitly (same rule as above):
-#   gsl (ES50's lngamma), patchwork (figure panels), rerddap (onmsR).
+#   gsl (ES50's lngamma), patchwork (figure panels), rerddap (onmsR),
+#   jsonvalidate (msens Suggests; build_app_bundle.qmd's app-bundle schema validation --
+#   the 2026-09-24 server dry run failed every stage with "package 'jsonvalidate' is
+#   required to validate an app bundle"; V8 was already present).
 # `remotes::install_github(upgrade = "never")` rather than installGithub.r:
 # obisindicators' DESCRIPTION carries `Remotes:` for h3-r and the bbest/mapgl
 # BRANCH, which a default install would resolve and walk the two pins above
@@ -203,7 +206,7 @@ RUN installGithub.r \
 # package; ONMSR_REF is onmsR 0.2.4 (2025-11-12 sanctuaries update).
 ARG OBISIND_REF=4762db63045d462416b67645993e058bc9f138f6
 ARG ONMSR_REF=804e3017e941067ad8a30a100d7ce5601134c0cb
-RUN install2.r --error gsl patchwork rerddap \
+RUN install2.r --error gsl patchwork rerddap jsonvalidate \
   && R -e 'remotes::install_github( \
              c(paste0("marinebon/obisindicators@", Sys.getenv("OBISIND_REF")), \
                paste0("noaa-onms/onmsR@",          Sys.getenv("ONMSR_REF"))), \
