@@ -28,9 +28,11 @@ trap cleanup EXIT
 docker run -d --name "$name" --network "$net" \
   -v "$repo/caddy/preview_routes.caddy:/etc/caddy/preview_routes.caddy:ro" \
   -v "$repo/caddy/app_version_routes.caddy:/etc/caddy/app_version_routes.caddy:ro" \
+  -v "$repo/caddy/atlas_preview_routes.caddy:/etc/caddy/atlas_preview_routes.caddy:ro" \
   -v "$here/preview_routes.test.Caddyfile:/etc/caddy/Caddyfile:ro" \
   -v "$repo/caddy/preview:/share/github/MarineSensitivity/server/caddy/preview:ro" \
   -v /share/docs_preview:/share/docs_preview:ro \
+  -v /share/atlas_preview:/share/atlas_preview:ro \
   "$img" caddy run --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
 sleep 3
 
@@ -101,5 +103,66 @@ req "/docs/" "${auth[@]}"
 [ "$CODE" = 200 ] && ok "/docs/ serves the gh-pages-preview clone" || bad "docs" "code=$CODE"
 
 docker run --rm --network "$net" "$curl_img" -s -m 30 -o /dev/null -D - "${auth[@]}" "http://$name:8080/" | grep -qi "x-robots-tag: noindex" && ok "X-Robots-Tag noindex" || bad "X-Robots-Tag" "missing"
+
+# --- atlas: /{ver}/atlas/... -> caddy/atlas_preview_routes.caddy -----------
+# bare-string/bool/number JSON field extraction, same no-jq policy as meta()
+# above -- session.json is JSON, not the apps' HTML meta tags.
+jf() { grep -o "\"$1\"[[:space:]]*:[[:space:]]*[^,}]*" "$body" | head -1 | sed -E 's/.*:[[:space:]]*//; s/^"//; s/"$//'; }
+# keys_exact "k1 k2" -> 0 iff $body's (flat) JSON object has EXACTLY these
+# keys. Pure grep/sed, same no-jq policy; relies on session.json never
+# nesting, which is true by construction (it is one hand-written `respond`).
+keys_exact() {
+  local want got
+  # shellcheck disable=SC2086 -- intentional word-splitting: $1 is a
+  # space-separated list of expected key names
+  want=$(printf '%s\n' $1 | sort)
+  got=$(grep -o '"[A-Za-z_][A-Za-z0-9_]*"[[:space:]]*:' "$body" | sed -E 's/"([A-Za-z_][A-Za-z0-9_]*)".*/\1/' | sort)
+  [ "$want" = "$got" ]
+}
+# a refusal must be a REAL response, never a curl/docker failure (CODE=000 or
+# empty -- e.g. the container unreachable) silently passing as "not 200"
+# (Opus gate review of e6fdef5, finding 4).
+refused() { [ -n "$1" ] && [ "$1" != "000" ] && [ "$1" != 200 ]; }
+
+# the 308 is asserted on BOTH sides of the gate: without a token it must never
+# answer before jwtauth does (finding 2 -- a bare `redir` sorted ahead of
+# `authentication` in Caddy's compiled route list; fixed by wrapping it in
+# `handle`, proved locally by caddy/test/atlas_routes_local.sh's basic_auth
+# stand-in, since this image's jwtauth can't be adapted without Cloudflare's
+# JWKS reachable). With a token it must still redirect, query intact.
+req "/$ver/atlas";                              { [ "$CODE" = 401 ] || [ "$CODE" = 302 ]; } && ok "atlas: no token, no slash -> 401/302 (redirect never answers first)" || bad "atlas no token (noslash)" "$CODE"
+req "/$ver/atlas/";                             { [ "$CODE" = 401 ] || [ "$CODE" = 302 ]; } && ok "atlas: no token -> 401/302" || bad "atlas no token" "$CODE"
+
+req "/$ver/atlas/" "${auth[@]}"
+[ "$CODE" = 200 ] && grep -q ms-app-sha "$body" && ok "/$ver/atlas/ -> app, with a token (ms-app-sha present: the real atlas tree is mounted, not an empty one)" || bad "/$ver/atlas/" "code=$CODE"
+
+# EXACTLY {preview, ver} -- no "user" (Opus gate review, finding 1: a raw
+# claim interpolated into hand-built JSON could smuggle a "data" key, which a
+# preview session's dataBase() would then honor as the data origin).
+req "/$ver/atlas/session.json" "${auth[@]}"
+if [ "$CODE" = 200 ] && [ "$(jf preview)" = true ] && [ "$(jf ver)" = "$ver" ] && keys_exact "preview ver"; then
+  ok "/$ver/atlas/session.json -> EXACTLY {preview:true,ver:$ver}"
+else
+  bad "/$ver/atlas/session.json" "code=$CODE preview=$(jf preview) ver=$(jf ver)"
+fi
+# NOT asserted here, on purpose: a v8 token refused on /v9/atlas/. This
+# origin's jwtauth has ONE FLAT audience_whitelist covering every Access
+# application's AUD (same shape app_version_routes.caddy's routes already
+# rely on), so per-version entitlement is enforced by CLOUDFLARE ACCESS AT
+# THE EDGE (one application + reviewer policy per version, cloudflare/
+# access.sh) -- not by this origin-side check. This test's own TOKEN is
+# shaped like any version's token here and would pass every version's
+# check identically, so that assertion would be red BY DESIGN, not from a
+# bug. See the README hand-off for the hardening option (a per-version AUD
+# and one `handle` per version) left to the server's owner.
+
+req "/$ver/atlas" "${auth[@]}"
+[ "$CODE" = 308 ] && [ "$LOC" = "http://$name:8080/$ver/atlas/" ] && ok "atlas: with a token, no slash -> 308 /$ver/atlas/" || bad "atlas noslash redirect (auth)" "code=$CODE loc=$LOC"
+
+req "/$ver/atlas?probe=1" "${auth[@]}"
+[ "$CODE" = 308 ] && [ "$LOC" = "http://$name:8080/$ver/atlas/?probe=1" ] && ok "/$ver/atlas?probe=1 -> 308 /$ver/atlas/?probe=1 (query intact)" || bad "atlas noslash redirect (query)" "code=$CODE loc=$LOC"
+
+req "/$ver/atlas/../../etc/passwd" "${auth[@]}"
+refused "$CODE" && ! grep -qi 'root:' "$body" && ok "atlas traversal refused (code=$CODE, no passwd content)" || bad "atlas traversal" "code=$CODE"
 
 if [ "$fails" -eq 0 ]; then echo "PREVIEW_ROUTES_OK"; else echo "PREVIEW_ROUTES_FAILED ($fails)"; exit 1; fi

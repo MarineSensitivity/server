@@ -1,0 +1,26 @@
+# atlas_preview_routes.test.Caddyfile — throwaway config for
+# caddy/test/atlas_routes_local.sh: the REAL atlas snippet
+# (../atlas_preview_routes.caddy), HTTP-only, on a free port -- so it runs on
+# this laptop's homebrew caddy, which has no jwtauth plugin (no Docker, no Go
+# here either). That means this proves ROUTING only, never the Cloudflare
+# Access gate in front of it in production; caddy/test/run.sh (on the server,
+# against the real image) proves the auth half.
+#
+# ATLAS_TEST_PORT and ATLAS_PREVIEW_ROOT are env vars the script sets — the
+# latter is the SAME knob atlas_preview_routes.caddy itself reads (see its
+# `root` line), so production and this test share one file with one seam.
+#
+# The trailing `respond 404` models "nothing else in this vhost matched" — in
+# production that is preview_routes.caddy's landing-page catch-all `handle`,
+# which also never hands back real file content for a path this block does
+# not own. `handle` blocks are mutually exclusive with what follows once
+# matched, so this line never fires for a request the snippet above handled.
+{
+	auto_https off
+	admin off
+}
+
+:{$ATLAS_TEST_PORT:19999} {
+	import ../atlas_preview_routes.caddy
+	respond 404
+}

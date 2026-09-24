@@ -222,12 +222,23 @@ app.marinesensitivity.org {
 	# their mdl_key). 302, not 301: a version stops being restricted when it is
 	# released, and a cached 301 would keep sending visitors to the review host.
 	#
+	# `atlas` joined this matcher 2026-09-24 (atlas-9): the static atlas app has
+	# no canonical URL on THIS host (its public home is marinesensitivity.org/
+	# atlas/?ver=, GitHub Pages -- a different origin this Caddyfile does not
+	# serve at all), so nothing here would otherwise answer /{ver}/atlas/ except
+	# falling through to `reverse_proxy rstudio:3838`, which does not know that
+	# path. Covering it keeps the same guarantee scores/species already have --
+	# a reviewer who guesses the /v9/atlas/ shape by analogy lands on the review
+	# host, never a 404 that looks like "this version doesn't have an atlas" --
+	# and it is what sends a restricted version's atlas request to the ONE place
+	# that can actually serve it (preview_routes.caddy's atlas import).
+	#
 	# PREVIEW_RESTRICTED_VERSIONS is a regex alternation of the restricted
 	# versions ("v8|v9") from the server .env -- the same manual step as
 	# PREVIEW_REVIEWERS_<VER> and CF_ACCESS_AUD -- and DEPLOY_CADDY asserts it
 	# against versions.json before restarting. Unset, it matches nothing and the
 	# prior behaviour (fall back to the promoted release) stands.
-	@restricted_app path_regexp rapp ^/(?:{$PREVIEW_RESTRICTED_VERSIONS:__none__})/(?:scores|species)(?:/.*)?$
+	@restricted_app path_regexp rapp ^/(?:{$PREVIEW_RESTRICTED_VERSIONS:__none__})/(?:scores|species|atlas)(?:/.*)?$
 	redir @restricted_app https://preview.marinesensitivity.org{uri} 302
 
 	# THE VERSION IS THE PATH here too (2026-08-27). One definition, shared with

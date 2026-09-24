@@ -17,10 +17,12 @@ services:
       CF_ACCESS_TEAM: ${CF_ACCESS_TEAM:-unconfigured}
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-unconfigured}
       # the restricted releases, as a regex alternation ("v8|v9"): the PUBLIC app
-      # vhost 302s /{ver}/scores|species for these to the review host instead of
-      # silently rendering the promoted release. Kept in the server .env beside
-      # PREVIEW_REVIEWERS_<VER>; DEPLOY_CADDY asserts it against versions.json.
-      # Unset, nothing matches and the old fallback behaviour stands.
+      # vhost 302s /{ver}/scores|species|atlas for these to the review host
+      # instead of silently rendering the promoted release (or, for atlas, a
+      # bare 404 -- this host has no other route for /{ver}/atlas/ at all).
+      # Kept in the server .env beside PREVIEW_REVIEWERS_<VER>; DEPLOY_CADDY
+      # asserts it against versions.json. Unset, nothing matches and the old
+      # fallback behaviour stands.
       PREVIEW_RESTRICTED_VERSIONS: ${PREVIEW_RESTRICTED_VERSIONS:-__none__}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile
@@ -30,7 +32,13 @@ services:
       - ./caddy/preview_routes.caddy:/etc/caddy/preview_routes.caddy
       # the version-path routes, shared by BOTH app vhosts (see the Caddyfile)
       - ./caddy/app_version_routes.caddy:/etc/caddy/app_version_routes.caddy
+      # the atlas app's routes on the preview host, imported from
+      # preview_routes.caddy (single-file bind mount, same restart rule)
+      - ./caddy/atlas_preview_routes.caddy:/etc/caddy/atlas_preview_routes.caddy
       - /share:/share
+      # the atlas-preview clone, explicitly read-only: caddy only ever serves
+      # from it, atlas-preview (below) is the only writer
+      - /share/atlas_preview:/share/atlas_preview:ro
       - /share/caddy/data:/data
       - /share/caddy/config:/config
 
@@ -160,6 +168,46 @@ services:
       # 1000:1000 /share/docs_preview`). Docker auto-creates a missing bind-mount
       # source as root:root, and the sidecar then cannot write its clone.
       - /share/docs_preview:/repo
+
+  # atlas-preview: the STATIC BUILD of the atlas app, for RESTRICTED releases.
+  # GitHub Pages serves `gh-pages` publicly and cannot be gated, so the preview
+  # host's Caddy vhost (caddy/atlas_preview_routes.caddy) serves this clone at
+  # /{ver}/atlas/ instead -- the SAME dist/, the SAME commit, just a different
+  # door (atlas/CLAUDE.md: the build is base-relative and router-free, so it
+  # runs unmodified under either mount point). This sidecar keeps the clone
+  # current by polling the same `gh-pages` branch the public host reads -- no
+  # inbound secret, no manual step; an atlas push shows up within 5 min. Runs as
+  # uid 1000 (= host `ubuntu`) so nothing under /share ends up root-owned. The
+  # branch may not exist yet before atlas-0's first CI publish: the loop just
+  # retries.
+  atlas-preview:
+    container_name: atlas-preview
+    image: alpine/git:v2.49.1
+    restart: unless-stopped
+    user: "1000:1000"
+    environment:
+      HOME: /tmp
+      GIT_TERMINAL_PROMPT: "0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        REPO=https://github.com/MarineSensitivity/atlas.git
+        while true; do
+          if [ ! -d /repo/.git ]; then
+            git clone --quiet --branch gh-pages --single-branch "$$REPO" /repo \
+              && echo "cloned gh-pages" \
+              || echo "clone failed (gh-pages may not exist yet); retrying in 5 min"
+          else
+            git -C /repo pull --ff-only --quiet || echo "pull failed; retrying in 5 min"
+          fi
+          sleep 300
+        done
+    volumes:
+      # HOST STATE: this directory must be owned by uid 1000 (`sudo chown
+      # 1000:1000 /share/atlas_preview`). Docker auto-creates a missing
+      # bind-mount source as root:root, and the sidecar then cannot write its
+      # clone.
+      - /share/atlas_preview:/repo
 
   # plumber: DuckDB-backed custom API (postgres stack retired 2026-06). Serves
   # the OBIS H3 summary endpoint /h3 (obisindicators::obis_h3t_sql) from the same
