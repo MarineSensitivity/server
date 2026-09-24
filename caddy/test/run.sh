@@ -134,7 +134,7 @@ req "/$ver/atlas";                              { [ "$CODE" = 401 ] || [ "$CODE"
 req "/$ver/atlas/";                             { [ "$CODE" = 401 ] || [ "$CODE" = 302 ]; } && ok "atlas: no token -> 401/302" || bad "atlas no token" "$CODE"
 
 req "/$ver/atlas/" "${auth[@]}"
-[ "$CODE" = 200 ] && grep -q ms-app-sha "$body" && ok "/$ver/atlas/ -> app, with a token (ms-app-sha present: the real atlas tree is mounted, not an empty one)" || bad "/$ver/atlas/" "code=$CODE"
+[ "$CODE" = 200 ] && grep -q "MarineSensitivity Atlas" "$body" && ok "/$ver/atlas/ -> app, with a token (the built page's <title> is present: the real atlas tree is mounted, not an empty one)" || bad "/$ver/atlas/" "code=$CODE"
 
 # EXACTLY {preview, ver} -- no "user" (Opus gate review, finding 1: a raw
 # claim interpolated into hand-built JSON could smuggle a "data" key, which a
