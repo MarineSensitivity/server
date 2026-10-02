@@ -14,7 +14,56 @@
 	}
 }
 
+# Every vhost logs (2026-10-02 egress review: only storage/preview/file did, so
+# nobody could say who was crawling the other ~17). Every byte served is EC2
+# egress, so the log is what turns a surprise bill into a name.
+#   import access_log <name>   -> /share/logs/caddy/<name>.log (JSON, rotated)
+(access_log) {
+	log {
+		output file /share/logs/caddy/{args[0]}.log {
+			roll_size 64MiB
+			roll_keep 14
+			roll_keep_for 2160h
+		}
+		format json
+	}
+}
+
+# Crawler policy for the DATA hosts (tiles, COGs, API, files). These are used by
+# browsers through the apps, never meant to be walked: tell well-behaved crawlers
+# to stay out, and refuse the AI/SEO scrapers outright.
+(robots_none) {
+	handle /robots.txt {
+		header Content-Type "text/plain; charset=utf-8"
+		respond `User-agent: *
+Disallow: /
+` 200
+	}
+}
+
+# 403 for AI-training / SEO scrapers by User-Agent (case-insensitive substring).
+# Deliberately NOT listed: Claude-User, ChatGPT-User -- a person asking an
+# assistant to fetch one URL is wanted. Arguments are the paths exempt from the
+# block (always /robots.txt; the file host also exempts its small browsable
+# trees). This is a `handle`, not a bare `respond`, so that it also runs on a
+# vhost made of sibling `handle` blocks (file), where a respond would sort AFTER
+# them and never fire.
+(no_ai_bots) {
+	@ai_bots {
+		header_regexp ai_bot User-Agent (?i)(GPTBot|OAI-SearchBot|ClaudeBot|Claude-SearchBot|anthropic-ai|Amazonbot|Bytespider|CCBot|PerplexityBot|Google-Extended|meta-externalagent|AhrefsBot|SemrushBot|MJ12bot|DotBot)
+		not path {args[:]}
+	}
+	handle @ai_bots {
+		header Content-Type "text/plain; charset=utf-8"
+		respond "Automated crawling of these data hosts is not permitted. See https://marinesensitivity.org/ for the catalog." 403
+	}
+}
+
 api.marinesensitivity.org {
+	import access_log api
+	import robots_none
+	import no_ai_bots /robots.txt
+
 	reverse_proxy plumber:8888
 }
 
@@ -27,14 +76,8 @@ file.marinesensitivity.org {
 	# and serve files by exact URL only -- no directory listings on the data
 	# trees. The browsable front door for data is the S3 index at
 	# storage.marinesensitivity.org; /stac/ and /branding/ stay browsable (small).
-	log {
-		output file /share/logs/caddy/file.log {
-			roll_size 64MiB
-			roll_keep 14
-			roll_keep_for 2160h
-		}
-		format json
-	}
+	import access_log file
+	import no_ai_bots /robots.txt /stac/* /branding/*
 
 	handle /robots.txt {
 		header Content-Type "text/plain; charset=utf-8"
@@ -117,7 +160,7 @@ Disallow: /
 	}
 }
 
-# Browsable front door for the PUBLIC S3 bucket.
+# Browsable front door for the PUBLIC S3 bucket -- folder PAGES only.
 #
 # Why this exists: S3 serves OBJECTS, not directories. A URL ending in "/" 404s
 # unless an object literally has that key, and anonymous ListBucket is DENIED on
@@ -125,8 +168,16 @@ Disallow: /
 # workflows notebook publish_storage_index.qmd generates a real index.html per
 # directory; this vhost rewrites folder URLs to them:
 #
-#   storage.marinesensitivity.org/marine-atlas/v8/  -> .../v8/index.html
-#   storage.marinesensitivity.org/marine-atlas/latest.txt -> the object
+#   storage.marinesensitivity.org/marine-atlas/v8/  -> .../v8/index.html  (proxied)
+#   storage.marinesensitivity.org/marine-atlas/latest.txt -> 302 to the object
+#
+# ONLY the small pages transit this server: folder URLs, */index.html and
+# */README.md. EVERY OTHER object is a 302 to the bucket's own HTTPS endpoint,
+# so none of its bytes -- Range requests included, a redirect ignores Range --
+# is billed as VM egress (it used to be proxied: 18 GB across ~90,000 objects,
+# 2026-10-02 egress review). The index pages already link files at that endpoint
+# directly. 302, not 301, because the store may move to another provider and a
+# cached 301 would pin clients to the old one.
 #
 # Named "storage" rather than "s3" so the URL survives a move to another
 # provider.
@@ -135,20 +186,12 @@ Disallow: /
 storage.marinesensitivity.org, storage.oceanmetrics.io {
 	encode zstd gzip
 
-	log {
-		output file /share/logs/caddy/storage.log {
-			roll_size 64MiB
-			roll_keep 14
-			roll_keep_for 2160h
-		}
-		format json
-	}
+	import access_log storage
 
 	# robots.txt inline, BEFORE the bucket handler, so it cannot be lost by an
 	# index regeneration. The catalog pages are welcome in search results; the
-	# objects behind them are not. Every byte is PROXIED through this server
-	# (reverse_proxy, not a redirect), and the tree is 18 GB across ~90,000
-	# objects, so a crawl would be billed as VM egress.
+	# objects behind them are not (they are now redirected to S3, but a crawler
+	# that follows the redirect still walks 90,000 of them).
 	handle /robots.txt {
 		header Content-Type "text/plain; charset=utf-8"
 		respond `# Catalog pages: crawl away. Data objects: please do not.
@@ -170,11 +213,27 @@ Disallow: /*.zip$
 	@atlas path_regexp atlas ^/(marine-atlas|gazetteer)(/|$)
 	handle @atlas {
 		# folder URL -> the index.html object standing in for a listing
-		@dir path_regexp dir ^(.*)/$
-		rewrite @dir {re.dir.1}/index.html
-		reverse_proxy https://s3.us-east-1.amazonaws.com {
-			header_up Host s3.us-east-1.amazonaws.com
-			rewrite /oceanmetrics.io-public{uri}
+		@dir path */
+		handle @dir {
+			rewrite * {path}index.html
+			reverse_proxy https://s3.us-east-1.amazonaws.com {
+				header_up Host s3.us-east-1.amazonaws.com
+				rewrite /oceanmetrics.io-public{uri}
+			}
+		}
+
+		# the pages themselves: small, and what a browser needs on this host
+		@page path */index.html */README.md
+		handle @page {
+			reverse_proxy https://s3.us-east-1.amazonaws.com {
+				header_up Host s3.us-east-1.amazonaws.com
+				rewrite /oceanmetrics.io-public{uri}
+			}
+		}
+
+		# everything else is a data object: hand the client to S3, move no bytes
+		handle {
+			redir https://s3.us-east-1.amazonaws.com/oceanmetrics.io-public{uri} 302
 		}
 	}
 
@@ -193,6 +252,8 @@ Start here: https://storage.marinesensitivity.org/marine-atlas/
 }
 
 pgadmin.marinesensitivity.org {
+	import access_log pgadmin
+
 	reverse_proxy pgadmin:8088
 }
 
@@ -203,18 +264,27 @@ pgadmin.marinesensitivity.org {
 # searchable STAC API (one Item per model) — complements the STATIC catalog served
 # from file.marinesensitivity.org/stac, which stays exactly as it is.
 stac-api.marinesensitivity.org {
+	import access_log stac-api
+	import robots_none
+
 	reverse_proxy stac-api:8084
 }
 
 rstudio.marinesensitivity.org {
+	import access_log rstudio
+
 	reverse_proxy rstudio:8787
 }
 
 shiny.marinesensitivity.org {
+	import access_log shiny
+
 	reverse_proxy rstudio:3838
 }
 
 app.marinesensitivity.org {
+	import access_log app
+
 	# ---- MST app cutover -------------------------------------------------
 	#
 	# /scores and /species are now ONE app that renders any published release
@@ -330,14 +400,7 @@ app.marinesensitivity.org {
 # everyone) rather than open. Which versions are restricted is NOT known here:
 # that is `access` in versions.json, enforced by the app process's MS_PREVIEW.
 preview.marinesensitivity.org {
-	log {
-		output file /share/logs/caddy/preview.log {
-			roll_size 64MiB
-			roll_keep 14
-			roll_keep_for 2160h
-		}
-		format json
-	}
+	import access_log preview
 
 	jwtauth {
 		jwk_url https://{$CF_ACCESS_TEAM:unconfigured}.cloudflareaccess.com/cdn-cgi/access/certs
@@ -384,6 +447,8 @@ preview.marinesensitivity.org {
 }
 
 shiny.oceanmetrics.io {
+	import access_log shiny-oceanmetrics
+
 	reverse_proxy rstudio:3838
 }
 
@@ -392,35 +457,66 @@ shiny.oceanmetrics.io {
 # }
 
 tile.marinesensitivity.org {
+	import access_log tile
+	import robots_none
+	import no_ai_bots /robots.txt
+
 	reverse_proxy tile:7800
 }
 
 tilecache.marinesensitivity.org {
+	import access_log tilecache
+	import robots_none
+	import no_ai_bots /robots.txt
+
 	reverse_proxy tilecache:6081
 }
 
 titiler.marinesensitivity.org {
+	import access_log titiler
+	import robots_none
+	import no_ai_bots /robots.txt
+
 	reverse_proxy titiler:8000
 }
 
 titiler-v8.marinesensitivity.org {
+	import access_log titiler-v8
+	import robots_none
+	import no_ai_bots /robots.txt
+
 	reverse_proxy titiler-v8:8000
 }
 
 titilecache.marinesensitivity.org {
+	import access_log titilecache
+	import robots_none
+	import no_ai_bots /robots.txt
+
 	reverse_proxy titilecache:6082
 }
 
 h3t.marinesensitivity.org {
+	import access_log h3t
+	import robots_none
+	import no_ai_bots /robots.txt
+
 	reverse_proxy h3t:8889
 }
 
 h3tcache.marinesensitivity.org {
+	import access_log h3tcache
+	import robots_none
+	import no_ai_bots /robots.txt
+
 	reverse_proxy h3tcache:6083
 }
 
 pmtiles.marinesensitivity.org {
+	import access_log pmtiles
 	import cors
+	import robots_none
+	import no_ai_bots /robots.txt
 
 	# server-side tile decoding: ZXY + TileJSON (for QGIS, leaflet, etc.)
 	handle_path /tiles/* {

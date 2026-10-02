@@ -45,6 +45,8 @@ cfg="$tmp/Caddyfile"
 {
   printf '{\n\tadmin off\n\tauto_https off\n}\n'
   awk '/^\(cors\) \{/{p=1} p{print} p&&/^\}/{exit}' "$src"
+  awk '/^\(access_log\) \{/{p=1} p{print} p&&/^\}/{exit}' "$src"   # snippets the vhost imports (absent in older Caddyfiles)
+  awk '/^\(no_ai_bots\) \{/{p=1} p{print} p&&/^\}/{exit}' "$src"
   awk '/^file\.marinesensitivity\.org \{/{p=1} p{print} p&&/^\}/{exit}' "$src"
 } | sed -e "s#^file\.marinesensitivity\.org {#$base {#" -e "s#/share/#$r/#g" > "$cfg"
 grep -q "^$base {" "$cfg" || { echo "could not cut the file vhost out of $src" >&2; exit 1; }
