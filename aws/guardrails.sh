@@ -121,7 +121,9 @@ TOPIC_ARN="arn:aws:sns:$REGION:$acct:$TOPIC_NAME"
 # credentials. Paste the whole "Confirm subscription" URL from the AWS email (quoted), or its Token.
 if [ "$MODE" = confirm ]; then
   [ -n "${CONFIRM_ARG:-}" ] || die "usage: aws/guardrails.sh --confirm '<the Confirm subscription link from the AWS email, or its Token>'"
-  token=$(printf '%s' "$CONFIRM_ARG" | sed -E 's/.*[?&]Token=([^&]+).*/\1/')
+  # a link copied out of a mail client may arrive wrapped and percent-encoded (…url?q=…%26Token%3D…)
+  token=$(printf '%s' "$CONFIRM_ARG" | sed -e 's/%3[Dd]/=/g' -e 's/%26/\&/g' -e 's/%3[Ff]/?/g' \
+            | sed -E 's/.*[?&]Token=([0-9a-fA-F]+).*/\1/')
   printf '%s' "$token" | grep -Eq '^[0-9a-f]{64,}$' || die "that does not contain an SNS confirmation token"
   aws sns confirm-subscription --topic-arn "$TOPIC_ARN" --token "$token" \
     --authenticate-on-unsubscribe true --query SubscriptionArn --output text >/dev/null \
