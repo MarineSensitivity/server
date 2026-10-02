@@ -13,6 +13,8 @@
 #                                    #   ok | MISSING | DRIFT | ERROR; exits non-zero unless all ok
 #   aws/guardrails.sh --plan         # print the exact `aws` commands --apply would run; runs none
 #   aws/guardrails.sh --apply        # converge: create what is missing, update what drifted
+#   aws/guardrails.sh --confirm '<link>'  # confirm the SNS email subscription from here (paste the link
+#                                    #   from the AWS email) so that only AWS credentials can unsubscribe it
 #   aws/guardrails.sh --test-alarm   # seeded fault: force the hourly network alarm to ALARM so one
 #                                    #   email arrives (proves the whole alarm -> SNS -> inbox path)
 #
@@ -21,8 +23,8 @@
 # the old $20 budget is reported as unrealistic and left for a human to delete (aws/README.md).
 #
 # THE SIX GUARDRAILS (names are the idempotency key -- do not rename by hand):
-#   1  sns topic        msens-alerts + an email subscription (PendingConfirmation counts as
-#                       present, and is reported as such)
+#   1  sns topic        msens-alerts + a CONFIRMED email subscription (PendingConfirmation is
+#                       DRIFT, an unsubscribed one is MISSING: neither delivers anything)
 #   2  network alarms   msens1-network-out-hour / -day: EC2 NetworkOut Sum over the instance
 #   3  cost anomalies   DIMENSIONAL/SERVICE monitor msens-services + a DAILY email subscription
 #   4  budgets          msens-monthly-total (80 % / 100 % actual, 100 % forecast) and
@@ -91,6 +93,7 @@ case "${1:-}" in
   --plan)      MODE=plan ;;
   --apply)     MODE=apply ;;
   --test-alarm) MODE=test-alarm ;;
+  --confirm)   MODE=confirm; CONFIRM_ARG=${2:-} ;;
   -h|--help)   sed -n '2,/^set -euo/p' "$0" | sed '$d'; exit 0 ;;
   *)           die "unknown argument: $1 (see the header of this script)" ;;
 esac
@@ -110,6 +113,22 @@ acct=$(aws sts get-caller-identity --query Account --output text 2>/dev/null) \
   || die "no usable AWS credentials (try: aws sts get-caller-identity)"
 [ "$acct" = "$ACCOUNT_ID" ] || die "this is account $acct, not $ACCOUNT_ID — refusing (set ACCOUNT_ID to override)"
 TOPIC_ARN="arn:aws:sns:$REGION:$acct:$TOPIC_NAME"
+
+# --confirm '<link or token>': confirm the email subscription FROM HERE instead of by clicking the
+# link, with AuthenticateOnUnsubscribe. A link click confirms too, but then the "unsubscribe" link in
+# every later alert email works for anyone -- including a mail scanner that follows links -- and an
+# unsubscribed topic delivers nothing, silently. Confirmed this way, unsubscribing needs AWS
+# credentials. Paste the whole "Confirm subscription" URL from the AWS email (quoted), or its Token.
+if [ "$MODE" = confirm ]; then
+  [ -n "${CONFIRM_ARG:-}" ] || die "usage: aws/guardrails.sh --confirm '<the Confirm subscription link from the AWS email, or its Token>'"
+  token=$(printf '%s' "$CONFIRM_ARG" | sed -E 's/.*[?&]Token=([^&]+).*/\1/')
+  printf '%s' "$token" | grep -Eq '^[0-9a-f]{64,}$' || die "that does not contain an SNS confirmation token"
+  aws sns confirm-subscription --topic-arn "$TOPIC_ARN" --token "$token" \
+    --authenticate-on-unsubscribe true --query SubscriptionArn --output text >/dev/null \
+    || die "confirm-subscription failed (a token is single-use and expires after 3 days: re-run --apply for a new email)"
+  say "subscription confirmed; unsubscribing now needs AWS credentials. next: aws/guardrails.sh --test-alarm"
+  exit 0
+fi
 
 # plan lines go to fd 3 (the terminal) so `$(run ...)` can still capture a command's own output
 exec 3>&1
@@ -193,20 +212,26 @@ chk_1() {
         --query "Subscriptions[?Protocol=='email'].[Endpoint,SubscriptionArn]" --output text; then
     part ERROR "sns list-subscriptions-by-topic: $ERR"; return 0
   fi
-  local subs=$OUT arn emails
+  # ONLY a confirmed subscription delivers. SNS lists two other states under the same endpoint, and
+  # neither may read as ok: `PendingConfirmation` (nobody clicked the link) and `Deleted` (someone
+  # -- or a mail scanner following every link in the alert email -- hit "unsubscribe"; the row
+  # lingers for days). On 2026-10-02 the first --test-alarm published fine and this check printed
+  # `ok ... subscribers: ben@…` while the subscription was `Deleted` and no alert could arrive.
+  local subs=$OUT live pend emails
+  subs=$(printf '%s\n' "$subs" | awk -F'\t' '$2 != "Deleted"')
   if [ -n "$ALERT_EMAIL" ]; then
-    arn=$(printf '%s\n' "$subs" | awk -F'\t' -v e="$ALERT_EMAIL" '$1 == e { print $2; exit }')
-    if [ -z "$arn" ]; then
-      part MISSING "topic $TOPIC_NAME has no email subscription for $ALERT_EMAIL"
-    elif [ "$arn" = PendingConfirmation ]; then
-      S1_SUB=1; part ok "topic $TOPIC_NAME; $ALERT_EMAIL PendingConfirmation (click the link in the email AWS sent)"
-    else
-      S1_SUB=1; part ok "topic $TOPIC_NAME; $ALERT_EMAIL subscribed and confirmed"
-    fi
+    subs=$(printf '%s\n' "$subs" | awk -F'\t' -v e="$ALERT_EMAIL" '$1 == e')
+  fi
+  live=$(printf '%s\n' "$subs" | awk -F'\t' '$2 ~ /^arn:aws:sns:/ { printf "%s%s", (n++ ? "," : ""), $1 }')
+  pend=$(printf '%s\n' "$subs" | awk -F'\t' '$2 == "PendingConfirmation" { printf "%s%s", (n++ ? "," : ""), $1 }')
+  emails=${ALERT_EMAIL:-an email address}
+  if [ -n "$live" ]; then
+    S1_SUB=1; part ok "topic $TOPIC_NAME; confirmed subscriber(s): $live"
+  elif [ -n "$pend" ]; then
+    # present (so --apply does not subscribe again) but NOT ok: nothing is delivered yet
+    S1_SUB=1; part DRIFT "topic $TOPIC_NAME; $pend is PendingConfirmation — no alert can reach it; confirm with: aws/guardrails.sh --confirm '<the link in the AWS email>'"
   else
-    emails=$(printf '%s\n' "$subs" | awk -F'\t' 'NF { printf "%s%s", (n++ ? "," : ""), $1 }')
-    if [ -z "$emails" ]; then part MISSING "topic $TOPIC_NAME has no email subscription"
-    else S1_SUB=1; part ok "topic $TOPIC_NAME; subscribers: $emails"; fi
+    part MISSING "topic $TOPIC_NAME has no live email subscription for $emails (none, or unsubscribed)"
   fi
 }
 fix_1() {

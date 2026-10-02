@@ -23,14 +23,20 @@ GB means 10^9 bytes. Everything alarms to the one email address.
 cd server
 ALERT_EMAIL=you@example.org aws/guardrails.sh --plan    # the exact aws commands; runs none
 ALERT_EMAIL=you@example.org aws/guardrails.sh --apply   # converge (idempotent), then re-checks itself
-# 1. open the "AWS Notification - Subscription Confirmation" email and click Confirm subscription
+# 1. open the "AWS Notification - Subscription Confirmation" email, COPY the Confirm subscription
+#    link (do not click it) and confirm from here:
+aws/guardrails.sh --confirm '<the link>'                # confirmed so that only AWS credentials can unsubscribe
 aws/guardrails.sh --test-alarm                          # forces the hourly alarm to ALARM: one email must arrive
 aws/guardrails.sh --check                               # read-only; exits non-zero unless all six are ok
 ```
 
-`--check` prints one line per guardrail (`ok` / `MISSING` / `DRIFT` / `ERROR`). A subscription that is
-still `PendingConfirmation` counts as present but is reported as such: no alert reaches you until you
-click the link. `--test-alarm` changes nothing durable: the alarm returns to OK by itself at its next
+Why `--confirm` and not a click: every alert email carries an "unsubscribe" link that works for anyone
+who follows it, including a mail scanner. On the day this was first applied the subscription was
+`Deleted` within minutes of being confirmed, the test alarm published into nothing, and `--check` still
+said `ok`. `--check` now counts only a CONFIRMED subscription (`PendingConfirmation` is DRIFT, an
+unsubscribed one is MISSING), and `--apply` subscribes again when it is gone.
+
+`--check` prints one line per guardrail (`ok` / `MISSING` / `DRIFT` / `ERROR`). `--test-alarm` changes nothing durable: the alarm returns to OK by itself at its next
 evaluation. Re-run `--check` from cron or a calendar reminder; DRIFT means someone edited a guardrail by hand.
 
 Credentials: the IAM user needs SNS, CloudWatch alarms, Cost Explorer anomaly, Budgets and S3
