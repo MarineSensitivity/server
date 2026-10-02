@@ -21,6 +21,32 @@ api.marinesensitivity.org {
 file.marinesensitivity.org {
 	import cors
 
+	# This host had no access log and no robots.txt while it listed ~80 GB of
+	# data as browsable directories (2026-10-02 egress review). Every byte it
+	# serves is VM egress, so: log it, tell crawlers to stay out of the data,
+	# and serve files by exact URL only -- no directory listings on the data
+	# trees. The browsable front door for data is the S3 index at
+	# storage.marinesensitivity.org; /stac/ and /branding/ stay browsable (small).
+	log {
+		output file /share/logs/caddy/file.log {
+			roll_size 64MiB
+			roll_keep 14
+			roll_keep_for 2160h
+		}
+		format json
+	}
+
+	handle /robots.txt {
+		header Content-Type "text/plain; charset=utf-8"
+		respond `# The STAC catalog and the brand set: crawl away. Data files: please do not.
+User-agent: *
+Crawl-delay: 10
+Allow: /stac/
+Allow: /branding/
+Disallow: /
+` 200
+	}
+
 	# the brand set, served straight from the repo checkout: a `git pull` on the
 	# server publishes it, so there is no copy step to forget. Used by the
 	# Cloudflare Access login page (which takes a logo URL), the docs, the apps
@@ -34,17 +60,34 @@ file.marinesensitivity.org {
 	# raw pmtiles for client-side PMTiles protocol (add_pmtiles_source)
 	handle_path /pmtiles/* {
 		root * /share/data/derived/pmtiles
-		file_server browse
+		file_server
+	}
+
+	# The per-model PMTiles of v8 and v9 (6,776 files each, hardlinked to one
+	# another) live OUTSIDE /share/data/derived on purpose. The BOEM internal
+	# mirror ran `rclone sync …:/share/data/derived --include "*.pmtiles"` every
+	# hour; when v9's copy appeared there on 2026-08-27 its disk filled and it
+	# re-read the same 3,950 files hourly for five weeks (~150 GB/day of egress,
+	# $450). host/pmtiles_native.sh moved them here; the URLs every published
+	# v8/v9 `native_asset` row points at are unchanged. These go away with the
+	# asset-store prune (PMTiles served from S3 only).
+	handle_path /pmtiles/v8/* {
+		root * /share/data/pmtiles_native/v8
+		file_server
+	}
+	handle_path /pmtiles/v9/* {
+		root * /share/data/pmtiles_native/v9
+		file_server
 	}
 
 	# legacy versioned pmtiles routes (backwards compat for old apps)
 	handle_path /pmtiles/v4/* {
 		root * /share/data/derived/v4/pmtiles
-		file_server browse
+		file_server
 	}
 	handle_path /pmtiles/v3/* {
 		root * /share/data/derived/v3/pmtiles
-		file_server browse
+		file_server
 	}
 
 	# stac catalog (sdm extension) — static JSON tree
@@ -56,7 +99,7 @@ file.marinesensitivity.org {
 	# versioned derived data (geoparquet, cogs, gpkg) referenced by stac assets
 	handle_path /derived/* {
 		root * /share/data/derived
-		file_server browse
+		file_server
 	}
 
 	# force reports to download (especially HTML which otherwise renders inline)
@@ -68,7 +111,7 @@ file.marinesensitivity.org {
 
 	handle {
 		root * /share/public
-		file_server browse {
+		file_server {
 			precompressed zstd br gzip
 		}
 	}
