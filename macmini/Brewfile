@@ -1,0 +1,28 @@
+# homebrew formulae for the mac mini modeling machine (no sudo needed)
+# apply: brew bundle --file=macmini/Brewfile
+
+# geospatial system libraries (terra, sf, stars build and run against these)
+brew "gdal"
+brew "proj"
+brew "geos"
+brew "udunits"
+
+# data + cloud tools
+brew "duckdb"
+brew "awscli"
+brew "rclone"
+brew "jq"
+
+# source control + sessions
+brew "gh"
+brew "tmux"
+
+# python environments (speciesgrids, speedy, rio-cogeo)
+brew "uv"
+
+# build tools for R packages that compile from source
+brew "cmake"
+brew "pkg-config"
+
+# boot-time tailscale daemon (the only tailscale that should run on this machine)
+brew "tailscale"
