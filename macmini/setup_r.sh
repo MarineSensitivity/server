@@ -18,7 +18,7 @@ command -v quarto >/dev/null || brew install --cask quarto
 
 # r, pinned ----
 rig list 2>/dev/null | grep -q "$R_VERSION" || rig add "$R_VERSION"
-rig default "$R_VERSION"
+rig default "${R_VERSION%.*}"   # rig names an install by its minor version (4.6), not 4.6.1
 
 # base tooling; project libraries are restored per project from its renv.lock ----
 Rscript -e 'if (!requireNamespace("pak", quietly = TRUE)) install.packages("pak", repos = "https://cloud.r-project.org")'
