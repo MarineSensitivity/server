@@ -11,7 +11,9 @@ sudo -n true 2>/dev/null || { echo "needs passwordless sudo (see setup_root.sh h
 
 # rig (r installation manager) + quarto ----
 # rig is not in homebrew's own cask list: it comes from the r-lib/rig tap
-command -v rig    >/dev/null || { brew tap r-lib/rig; brew install --cask rig; }
+# (r-lib = the R tooling organisation that publishes it), and homebrew refuses a cask from a
+# third-party tap until it is trusted: trust that one cask, not the whole tap
+command -v rig    >/dev/null || { brew tap r-lib/rig; brew trust --cask r-lib/rig/rig; brew install --cask r-lib/rig/rig; }
 command -v quarto >/dev/null || brew install --cask quarto
 
 # r, pinned ----
