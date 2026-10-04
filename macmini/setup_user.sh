@@ -43,6 +43,7 @@ for r in mpaeu_sdm mpaeu_msdm mpaeu_esdm mpaeu_docs speciesgrids speedy; do clon
 
 # report ----
 echo "--- versions"
-for c in gdalinfo duckdb aws gh tmux uv rclone; do printf '%s: ' "$c"; "$c" --version 2>&1 | head -1; done
+for c in gdalinfo duckdb aws gh uv rclone; do printf '%s: ' "$c"; "$c" --version 2>&1 | head -1 || true; done
+tmux -V || true   # tmux has no --version
 ls -ld ~/_big 2>/dev/null || true
 df -h "$BIG_VOL" 2>/dev/null | tail -1 || true
