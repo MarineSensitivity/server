@@ -10,7 +10,8 @@ R_VERSION=${R_VERSION:-4.6.1}   # same as the laptop, so packages install as cra
 sudo -n true 2>/dev/null || { echo "needs passwordless sudo (see setup_root.sh header)" >&2; exit 1; }
 
 # rig (r installation manager) + quarto ----
-command -v rig    >/dev/null || brew install --cask rig
+# rig is not in homebrew's own cask list: it comes from the r-lib/rig tap
+command -v rig    >/dev/null || { brew tap r-lib/rig; brew install --cask rig; }
 command -v quarto >/dev/null || brew install --cask quarto
 
 # r, pinned ----
