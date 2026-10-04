@@ -29,7 +29,9 @@ else
 fi
 
 # python command-line tools ----
-uv tool install rio-cogeo   # `rio cogeo`, called by the obis pipeline to write cogs
+# `rio cogeo`, called by the obis pipeline to write cogs: rio-cogeo is a plugin with no
+# executable of its own; the `rio` command belongs to rasterio
+uv tool install rasterio --with rio-cogeo
 
 # repos, same layout as the laptop (https: read-only until the mini has its own github key) ----
 clone() { # clone <org> <repo>
