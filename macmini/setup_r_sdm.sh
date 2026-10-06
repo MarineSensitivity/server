@@ -23,7 +23,8 @@ pkgs_sdm <- c(
 # msens + the notebooks ----
 pkgs_msens <- c(
   "exactextractr", "gt", "DT", "knitr", "rmarkdown", "testthat", "roxygen2", "tibble", "forcats",
-  "scales", "htmltools", "digest", "jsonvalidate", "rstac", "mapgl", "tidyterra", "concaveman", "geosphere")
+  "scales", "htmltools", "digest", "jsonvalidate", "rstac", "mapgl", "tidyterra", "concaveman", "geosphere",
+  "logger", "FNN")
 pak::pkg_install(c(pkgs_sdm, pkgs_msens), upgrade = FALSE, ask = FALSE)
 
 # msens' own imports + suggests, from its DESCRIPTION (honours its `Remotes:` pin of bbest/mapgl) ----

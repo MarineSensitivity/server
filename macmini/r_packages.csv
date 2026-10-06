@@ -167,6 +167,7 @@ lightgbm,4.7.0
 linprog,0.9-6
 listenv,1.1.0
 litedown,0.11
+logger,0.4.3
 lpSolve,5.6.23
 lubridate,1.9.5
 lwgeom,0.2-17
@@ -189,6 +190,7 @@ mime,0.13
 miniUI,0.1.2
 ModelMetrics,1.2.2.2
 modEvA,3.47
+msens,0.53.0
 multicool,1.0.1
 mvtnorm,1.4-2
 nabor,0.5.0
