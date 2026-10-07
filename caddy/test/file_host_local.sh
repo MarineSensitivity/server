@@ -4,9 +4,9 @@
 # swapped for a local port and /share for a fixture tree built here. Needs only
 # homebrew caddy + curl (no plugins: this vhost uses none).
 #
-# What it proves (2026-10-02 egress review):
-#   - /pmtiles/v8/ and /pmtiles/v9/ are served from pmtiles_native, NOT from
-#     derived/pmtiles (a decoy with the same name sits in the old place);
+# What it proves (2026-10-02 egress review; 2026-10-07 asset-store prune):
+#   - /pmtiles/v8/ and /pmtiles/v9/ answer 410 Gone and never fall through to
+#     derived/pmtiles (a decoy with the old name sits there and must not be served);
 #   - no data tree answers with a directory listing; exact files still do;
 #   - /stac/ and /branding/ stay browsable; robots.txt exists; requests are logged.
 #
@@ -27,13 +27,12 @@ base="http://127.0.0.1:$port"
 
 # ---- fixtures ------------------------------------------------------------------
 r="$tmp/share"
-mkdir -p "$r/data/derived/pmtiles/v8/rng" "$r/data/pmtiles_native/v8/rng" "$r/data/pmtiles_native/v9/rng" \
+mkdir -p "$r/data/derived/pmtiles/v8/rng" "$r/data/derived/pmtiles/v9/rng" \
          "$r/data/derived/v4/pmtiles" "$r/data/derived/stac" "$r/data/derived/v7" "$r/public/cog" \
          "$r/github/MarineSensitivity/server/branding" "$r/logs/caddy"
 printf 'ZONES'   > "$r/data/derived/pmtiles/ply.pmtiles"
-printf 'DECOY'   > "$r/data/derived/pmtiles/v8/rng/a.pmtiles"      # the OLD place: must not be served
-printf 'NATIVE8-0123456789' > "$r/data/pmtiles_native/v8/rng/a.pmtiles"
-printf 'NATIVE9-0123456789' > "$r/data/pmtiles_native/v9/rng/a.pmtiles"
+printf 'DECOY8'  > "$r/data/derived/pmtiles/v8/rng/a.pmtiles"      # the OLD place: must not be served
+printf 'DECOY9'  > "$r/data/derived/pmtiles/v9/rng/a.pmtiles"
 printf 'V4'      > "$r/data/derived/v4/pmtiles/x.pmtiles"
 printf '{"type":"Catalog"}' > "$r/data/derived/stac/catalog.json"
 printf 'TIF'     > "$r/data/derived/v7/f.tif"
@@ -60,14 +59,15 @@ code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 is() {  # is <label> <expected> <actual>
   if [ "$2" = "$3" ]; then echo "  ok   $1 ($3)"; else echo "  FAIL $1: expected $2, got $3"; fail=1; fi
 }
-is "v8 per-model tile comes from pmtiles_native, not the decoy" "NATIVE8-0123456789" "$(curl -s "$base/pmtiles/v8/rng/a.pmtiles")"
-is "v9 per-model tile"                 "NATIVE9-0123456789" "$(curl -s "$base/pmtiles/v9/rng/a.pmtiles")"
-is "v9 range request (PMTiles protocol)" 206 "$(code -r 0-5 "$base/pmtiles/v9/rng/a.pmtiles")"
+is "v8 per-model tile is gone (410), not the decoy" 410 "$(code "$base/pmtiles/v8/rng/a.pmtiles")"
+is "v9 per-model tile is gone (410), not the decoy" 410 "$(code "$base/pmtiles/v9/rng/a.pmtiles")"
+is "the decoy body is never served"    0   "$(curl -s "$base/pmtiles/v8/rng/a.pmtiles" | grep -c DECOY)"
 is "zone tiles at /pmtiles/"           "ZONES" "$(curl -s "$base/pmtiles/ply.pmtiles")"
+is "range request (PMTiles protocol)"  206 "$(code -r 0-2 "$base/pmtiles/ply.pmtiles")"
 is "legacy /pmtiles/v4/"               "V4"    "$(curl -s "$base/pmtiles/v4/x.pmtiles")"
 is "derived file by exact URL"         "TIF"   "$(curl -s "$base/derived/v7/f.tif")"
 is "public file by exact URL"          "COG"   "$(curl -s "$base/cog/c.tif")"
-for d in /pmtiles/ /pmtiles/v8/ /pmtiles/v8/rng/ /pmtiles/v9/ /pmtiles/v4/ /derived/ /derived/v7/ / /cog/; do
+for d in /pmtiles/ /pmtiles/v4/ /derived/ /derived/v7/ / /cog/; do
   is "no directory listing at $d" 404 "$(code "$base$d")"
 done
 is "/stac/ stays browsable"            200 "$(code "$base/stac/")"
@@ -75,7 +75,7 @@ is "/stac/ lists the catalog"          1   "$(curl -s "$base/stac/" | grep -c 'c
 is "/branding/ stays browsable"        200 "$(code "$base/branding/")"
 is "robots.txt"                        200 "$(code "$base/robots.txt")"
 is "robots.txt keeps crawlers off data" 1  "$(curl -s "$base/robots.txt" | grep -c '^Disallow: /$')"
-is "CORS for a browser origin"         1   "$(curl -s -D - -o /dev/null -H 'Origin: https://marinesensitivity.org' "$base/pmtiles/v9/rng/a.pmtiles" | grep -ci '^access-control-allow-origin: \*')"
+is "CORS for a browser origin"         1   "$(curl -s -D - -o /dev/null -H 'Origin: https://marinesensitivity.org' "$base/pmtiles/ply.pmtiles" | grep -ci '^access-control-allow-origin: \*')"
 sleep 0.5
 is "requests are logged"               1   "$( [ -s "$r/logs/caddy/file.log" ] && echo 1 || echo 0)"
 

@@ -106,21 +106,18 @@ Disallow: /
 		file_server
 	}
 
-	# The per-model PMTiles of v8 and v9 (6,776 files each, hardlinked to one
-	# another) live OUTSIDE /share/data/derived on purpose. The BOEM internal
-	# mirror ran `rclone sync …:/share/data/derived --include "*.pmtiles"` every
-	# hour; when v9's copy appeared there on 2026-08-27 its disk filled and it
-	# re-read the same 3,950 files hourly for five weeks (~150 GB/day of egress,
-	# $450). host/pmtiles_native.sh moved them here; the URLs every published
-	# v8/v9 `native_asset` row points at are unchanged. These go away with the
-	# asset-store prune (PMTiles served from S3 only).
-	handle_path /pmtiles/v8/* {
-		root * /share/data/pmtiles_native/v8
-		file_server
+	# The per-model PMTiles of v8 and v9 were served from /share/data/pmtiles_native
+	# (moved out of derived/ on 2026-10-02 after the BOEM mirror's rclone loop re-read
+	# them hourly, ~150 GB/day) until the asset-store prune of 2026-10-07 removed them:
+	# every published v8/v9 `native_asset` row names a store object on S3
+	# (native/{ds_key}/{hash}.pmtiles). The old URLs answer 410 here rather than
+	# falling through to /share/data/derived/pmtiles, so a stray copy in the old
+	# place can never be served again (caddy/test/file_host_local.sh proves it).
+	handle /pmtiles/v8/* {
+		respond "Gone: per-model PMTiles are served from the asset store; see the release's native_asset table" 410
 	}
-	handle_path /pmtiles/v9/* {
-		root * /share/data/pmtiles_native/v9
-		file_server
+	handle /pmtiles/v9/* {
+		respond "Gone: per-model PMTiles are served from the asset store; see the release's native_asset table" 410
 	}
 
 	# legacy versioned pmtiles routes (backwards compat for old apps)

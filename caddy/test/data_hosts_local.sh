@@ -80,7 +80,7 @@ is   "titiler-v8: browser reaches the (dead) upstream -> 502" 502 "$(code -A "$B
 is   "titiler-v8: robots.txt is exactly the two lines" "User-agent: *|Disallow: /" "$(curl -s "$ti/robots.txt" | paste -sd'|' -)"
 # the file host: bots are refused on the data trees, welcome on the small browsable ones
 is   "file: bot on /derived/ data -> 403"      403 "$(code -A "$BOT" "$fi/derived/v7/f.tif")"
-is   "file: bot on /pmtiles/ data -> 403"      403 "$(code -A "$BOT" "$fi/pmtiles/v9/rng/a.pmtiles")"
+is   "file: bot on /pmtiles/ data -> 403"      403 "$(code -A "$BOT" "$fi/pmtiles/ply.pmtiles")"
 is   "file: bot on / (public tree) -> 403"     403 "$(code -A "$BOT" "$fi/cog/c.tif")"
 is   "file: bot on /stac/ is not blocked"      200 "$(code -A "$BOT" "$fi/stac/")"
 is   "file: bot on /stac/catalog.json"         200 "$(code -A "$BOT" "$fi/stac/catalog.json")"
