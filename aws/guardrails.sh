@@ -40,8 +40,10 @@
 #   SRC_BUCKET         [oceanmetrics.io-public]  shared: marine-atlas/ gazetteer/ backups/ issues/
 #   LOG_BUCKET         [oceanmetrics.io-logs]    private bucket that receives the access logs
 #   LOG_DAYS           [90]              expire access logs after this many days
-#   NET_OUT_HOUR_GB    [3]               hourly alarm: instance bytes out per hour
-#   NET_OUT_DAY_GB     [15]              daily alarm: instance bytes out per day
+#   NET_OUT_HOUR_GB    [1]               hourly alarm: instance bytes out per hour
+#   NET_OUT_DAY_GB     [5]               daily alarm: instance bytes out per day
+#                                        (3 / 15 until 2026-10-07: set before the baseline was known; with the
+#                                        mirror loop gone msens1 sends 0.03-0.06 GB/day, Sept was ~158 GB/day)
 #   ANOMALY_MIN_USD    [5]               anomaly emails only when total impact >= this
 #   BUDGET_TOTAL_USD   [230]             monthly total (baseline ~$187 + headroom)
 #   BUDGET_EGRESS_USD  [10]              monthly DataTransfer-Out-Bytes
@@ -59,8 +61,8 @@ INSTANCE_ID=${INSTANCE_ID:-i-0692d15b330da30b6}
 SRC_BUCKET=${SRC_BUCKET:-oceanmetrics.io-public}
 LOG_BUCKET=${LOG_BUCKET:-oceanmetrics.io-logs}
 LOG_DAYS=${LOG_DAYS:-90}
-NET_OUT_HOUR_GB=${NET_OUT_HOUR_GB:-3}
-NET_OUT_DAY_GB=${NET_OUT_DAY_GB:-15}
+NET_OUT_HOUR_GB=${NET_OUT_HOUR_GB:-1}
+NET_OUT_DAY_GB=${NET_OUT_DAY_GB:-5}
 ANOMALY_MIN_USD=${ANOMALY_MIN_USD:-5}
 BUDGET_TOTAL_USD=${BUDGET_TOTAL_USD:-230}
 BUDGET_EGRESS_USD=${BUDGET_EGRESS_USD:-10}

@@ -9,7 +9,7 @@ permanently in ALARM and nobody was told.
 | # | guardrail | what it is | threshold (env var) |
 |---|---|---|---|
 | 1 | SNS topic | `msens-alerts` + an email subscription | `ALERT_EMAIL` |
-| 2 | network alarms | `msens1-network-out-hour` / `-day`: EC2 `NetworkOut` Sum over msens1 | 3 GB/hour (`NET_OUT_HOUR_GB`), 15 GB/day (`NET_OUT_DAY_GB`) |
+| 2 | network alarms | `msens1-network-out-hour` / `-day`: EC2 `NetworkOut` Sum over msens1 | 1 GB/hour (`NET_OUT_HOUR_GB`), 5 GB/day (`NET_OUT_DAY_GB`) — lowered from 3 / 15 on 2026-10-07 once the post-fix baseline was known (0.03–0.06 GB/day) |
 | 3 | cost anomaly detection | monitor `msens-services` (DIMENSIONAL/SERVICE) + DAILY email subscription `msens-anomaly-daily` | total impact >= $5 (`ANOMALY_MIN_USD`) |
 | 4 | budgets | `msens-monthly-total` (80 % / 100 % actual, 100 % forecast) and `msens-data-transfer-out` (usage type `DataTransfer-Out-Bytes`, 100 % actual) | $230 (`BUDGET_TOTAL_USD`), $10 (`BUDGET_EGRESS_USD`) |
 | 5 | S3 request metrics | config `marine-atlas` (prefix `marine-atlas/`) on `oceanmetrics.io-public` + alarm `s3-marine-atlas-bytes-downloaded-day` | 20 GB/day (`S3_DL_DAY_GB`) |
