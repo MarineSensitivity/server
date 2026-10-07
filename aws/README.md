@@ -42,14 +42,16 @@ evaluation. Re-run `--check` from cron or a calendar reminder; DRIFT means someo
 Credentials: the IAM user needs SNS, CloudWatch alarms, Cost Explorer anomaly, Budgets and S3
 (bucket policy / lifecycle / logging / metrics) permissions. `--check` needs only the read side.
 
-## The old $20 budget
+## The old $20 budget (deleted 2026-10-07)
 
-"AWS Monthly Cost Budget" ($20) is permanently in ALARM, so its emails are noise. `--check` flags it as
-`unrealistic (limit < baseline)`; the script never deletes anything. Delete it by hand once
-`msens-monthly-total` is ok:
+"AWS Monthly Cost Budget" ($20) was permanently in ALARM, so its emails were noise. `--check` flagged it
+as `unrealistic (limit < baseline)`; the script never deletes anything, so it was deleted by hand once
+`msens-monthly-total` was ok — together with the 2018 `BillingAlarm` (EstimatedCharges > $10 → SNS
+`NotifyMe`, also permanently in ALARM):
 
 ```bash
 aws budgets delete-budget --account-id 814665782451 --budget-name "AWS Monthly Cost Budget"
+aws cloudwatch delete-alarms --alarm-names BillingAlarm
 ```
 
 The account also has a legacy CloudWatch alarm `BillingAlarm` (EstimatedCharges, threshold 10) that
