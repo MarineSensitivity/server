@@ -478,6 +478,12 @@ services:
       H3T_STMT_TIMEOUT_MS: "8000"
       H3T_THREADS:         "4"      # cap serving CPU (don't peg all cores)
       H3T_MEMORY_LIMIT:    "6GB"    # cap serving RAM (occ_h3 rollups can spill)
+      # /h3t/subtree + /h3t/taxon (obis-hex app): own DuckDB instance, capped
+      # separately; see h3t/README.md "subtree endpoint"
+      H3T_SUBTREE_THREADS:      "2"
+      H3T_SUBTREE_MEMORY_LIMIT: "1GB"
+      H3T_SUBTREE_TIMEOUT_S:    "60"
+      H3T_SUBTREE_MAX_CELLS:    "200000"
     volumes:
       - /share:/share
     ports:

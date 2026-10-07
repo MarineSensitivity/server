@@ -57,7 +57,7 @@ def test_tile_empty_result(app_client, b64_sql):
     assert body == {"cells": []}
     assert r.headers["ETag"].startswith('W/"')
     assert r.headers["Cache-Control"] == "public, max-age=600"
-    assert r.headers["Vary"] == "Accept-Encoding"
+    assert "Accept-Encoding" in r.headers["Vary"]  # newer starlette also adds Origin
 
 
 def test_tile_with_cells(app_client, b64_sql):

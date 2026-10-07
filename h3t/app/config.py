@@ -81,8 +81,23 @@ MAX_COVER_CELLS: int = int(os.getenv("H3T_MAX_COVER_CELLS", "2048"))
 DUCKDB_THREADS: str | None      = os.getenv("H3T_THREADS", "").strip() or None
 DUCKDB_MEMORY_LIMIT: str | None = os.getenv("H3T_MEMORY_LIMIT", "").strip() or None
 
-# CORS
+# CORS: "*" (default) or a comma-separated list of origins
 CORS_ORIGIN: str = os.getenv("H3T_CORS_ORIGIN", "*")
+CORS_ORIGINS: list[str] = [o.strip() for o in CORS_ORIGIN.split(",") if o.strip()] or ["*"]
+
+# /h3t/subtree + /h3t/taxon: a dedicated DuckDB instance on the default db (the
+# store ATTACHed read-only), capped independently of the tile connection.
+SUBTREE_ENABLED: bool       = os.getenv("H3T_SUBTREE", "true").lower() == "true"
+SUBTREE_THREADS: int        = int(os.getenv("H3T_SUBTREE_THREADS", "2"))
+# 1GB, not 2GB: on the full store 2GB let the process reach ~3.0 GB RSS (the
+# buffer pool keeps store blocks), 1GB peaks at ~1.9 GB for <= 1.6 s slower
+SUBTREE_MEMORY_LIMIT: str   = os.getenv("H3T_SUBTREE_MEMORY_LIMIT", "1GB")
+SUBTREE_TIMEOUT_S: float    = float(os.getenv("H3T_SUBTREE_TIMEOUT_S", "60"))
+SUBTREE_MAX_CELLS: int      = int(os.getenv("H3T_SUBTREE_MAX_CELLS", "200000"))
+SUBTREE_BBOX_MIN_RES: int   = int(os.getenv("H3T_SUBTREE_BBOX_MIN_RES", "6"))
+SUBTREE_CONCURRENCY: int    = int(os.getenv("H3T_SUBTREE_CONCURRENCY", "2"))
+SUBTREE_ROLLUP: bool        = os.getenv("H3T_SUBTREE_ROLLUP", "true").lower() == "true"
+SUBTREE_MAX_AGE: int        = int(os.getenv("H3T_SUBTREE_MAX_AGE", "86400"))
 
 # optional app-level gzip (off by default; Varnish handles it in prod)
 APP_GZIP: bool = os.getenv("H3T_APP_GZIP", "false").lower() == "true"

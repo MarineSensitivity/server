@@ -67,6 +67,107 @@ docker compose restart h3t
 docker compose exec h3tcache varnishadm 'ban req.url ~ "^/h3t/"'
 ```
 
+## Subtree endpoint (`/h3t/subtree`, `/h3t/taxon`)
+
+The one query the obis-hex browser app cannot precompute: biodiversity
+indicators per H3 cell for **any WoRMS AphiaID and all its descendants**. Code in
+`app/subtree.py`, a port of obisindicators' `.h3t_taxon_tree_cte()`
+(R/taxon.R) and `.h3t_indicators_sql()` (R/h3t.R); keep them in step.
+
+```
+GET /h3t/subtree?aphiaid=<int>&res=<1..7>[&decade=<yyy0>][&bbox=w,s,e,n][&format=parquet|json]
+GET /h3t/taxon?q=<name prefix>[&limit=20]     # 1..100
+GET /h3t/taxon/<aphiaid>
+```
+
+- **subtree** returns one row per cell: `h3` (hex string), `cell_id` (BIGINT),
+  `n`, `sp`, `shannon`, `simpson`, `es` (ES50, NULL where n < 50). Parquet
+  (`application/vnd.apache.parquet`, zstd) by default; `format=json` gives
+  `{aphiaid, res, decade, bbox, columns, cells: [{...}]}`. Headers: `X-Rows`,
+  `X-Query-Ms`, `ETag`, `Cache-Control: public, max-age=86400`.
+- **Subtree resolution**: a recursive CTE down `taxon.parentNameUsageID` from the
+  AphiaID and its `acceptedNameUsageID` (a synonym seed resolves to the accepted
+  subtree), filtering `occ_h3.aphiaid`. Reads the coarsest `occ_h3` tier
+  (3/5/7) at least as fine as `res` and rolls cells up with `h3_cell_to_parent`.
+- **decade**: `date_year` in `[decade, decade + 9]`; records without a year drop out.
+- **bbox** (`w,s,e,n`; `w > e` crosses the antimeridian) keeps output cells whose
+  **centre** (`h3_cell_to_lat/lng`) is inside, so returned cells are complete.
+  For `res >= 3` the res-3 covering cells of the bbox also go in as
+  `hex_prune IN (...)` so DuckDB reads only the bbox's row groups.
+- **taxon** search: case-insensitive name prefix; accepted names first, then by
+  `records` (occurrence records in the taxon's whole subtree, rolled up once at
+  startup in ~0.2 s), then name. Fields: `id`, `scientificName`, `rank`,
+  `status`, `accepted_id`, `records`. `/h3t/taxon/<id>` adds `parent_id`,
+  `children`, `children_accepted`; 404 if unknown.
+
+### Limits
+
+| limit | value | env |
+|---|---|---|
+| bbox required | res >= 6 (400 otherwise) | `H3T_SUBTREE_BBOX_MIN_RES` |
+| max cells | 200 000 (413 with a message above it) | `H3T_SUBTREE_MAX_CELLS` |
+| DuckDB memory | 1 GB (own in-memory instance, store ATTACHed read-only) | `H3T_SUBTREE_MEMORY_LIMIT` |
+| DuckDB threads | 2 | `H3T_SUBTREE_THREADS` |
+| query timeout | 60 s (504, query interrupted) | `H3T_SUBTREE_TIMEOUT_S` |
+| concurrent queries | 2 (others wait) | `H3T_SUBTREE_CONCURRENCY` |
+
+The memory cap is 1 GB rather than 2 GB because, on the full store, 2 GB let the
+process reach ~3.0 GB RSS (DuckDB keeps store blocks in its buffer pool) while
+1 GB peaked at ~1.9 GB and was at most ~1.6 s slower per query.
+
+### Timings (Mac mini, full store `obis_h3_global_v20260728`, 1 GB / 2 threads)
+
+| request | rows | time |
+|---|---|---|
+| `taxon?q=Megaptera&limit=5` | 5 | 0.06 s |
+| `taxon/2688` | 1 | 0.004 s |
+| Animalia `aphiaid=2&res=3` | 36 701 (0.7 MB) | 1.4 s |
+| Animalia `aphiaid=2&res=4` | 180 091 (2.5 MB) | 2.5 s |
+| Animalia `aphiaid=2&res=5` | > 200 000 → 413 | 3.0 s |
+| Aves `aphiaid=1836&res=5` | > 200 000 → 413 | 1.2 s |
+| Cetacea `aphiaid=2688&res=5` | 105 334 (0.7 MB) | 0.9 s |
+| Cetacea `aphiaid=2688&res=5&decade=1990&format=json` | 18 686 | 0.3 s |
+| Megaptera novaeangliae `aphiaid=137092&res=7&bbox=-72,40,-65,45` | 6 571 | 0.09 s |
+| Animalia `aphiaid=2&res=7&bbox=-72,40,-65,45` | 43 892 | 0.5 s |
+
+Process RSS: ~0.25 GB idle, ~1.8 GB after the runs above (the tile connection
+idle). Repeats are served by `h3tcache` (Varnish, 7-day TTL on `/h3t/`; 4xx
+cached 60 s) at `https://h3tcache.marinesensitivity.org/h3t/...`.
+
+### Parity
+
+`tests/test_subtree_store.py` (runs where the full store exists; set
+`H3T_TEST_STORE` or it finds `/share/data/obis` or `~/data/obis`) compares the
+subtree output with the precomputed `idx_h3_taxon` class layer:
+
+- **Mammalia** (1837), res 1–7, global: every cell present in both, `n` and
+  `sp` identical, `shannon`/`simpson`/`es` equal to 1e-7 relative (ES50 at
+  n ~ 1e5 moves by ~1e-8 with the parallel SUM order).
+- **Aves** (1836), res 3 and 5: the WoRMS tree also picks up 10 taxa (58 119
+  records) whose OBIS `class` is NULL, so the subtree is a superset: every
+  reference cell is present with `n` >= the reference, and the 98–99 % of cells
+  with equal `n` agree on every indicator.
+
+### For the app (obis-hex control)
+
+Use the cache host and parquet; read with DuckDB-WASM
+(`read_parquet` on the fetched buffer) or hyparquet:
+
+```
+# search box (debounce; >= 2 characters)
+https://h3tcache.marinesensitivity.org/h3t/taxon?q=Balaen&limit=20
+# selected taxon's details (rank, children)
+https://h3tcache.marinesensitivity.org/h3t/taxon/2688
+# map layer: res 1-5 global, res 6-7 with the view bbox (round it, e.g. to
+# 0.5 degrees, so pans reuse cached responses)
+https://h3tcache.marinesensitivity.org/h3t/subtree?aphiaid=2688&res=5
+https://h3tcache.marinesensitivity.org/h3t/subtree?aphiaid=2688&res=4&decade=1990
+https://h3tcache.marinesensitivity.org/h3t/subtree?aphiaid=137092&res=7&bbox=-72,40,-65,45
+```
+
+On 413 step `res` down by one (or shrink the bbox); on 400 the JSON `reason`
+says which parameter is wrong. Join on `h3` (string) or `cell_id` (BIGINT).
+
 ## Configuration
 
 See upstream env vars (`H3T_DBS`, `H3T_DEFAULT_DB`, `H3T_MAX_ROWS`,

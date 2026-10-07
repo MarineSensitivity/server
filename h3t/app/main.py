@@ -5,14 +5,24 @@ Endpoints (mirror the R Plumber service):
   GET /h3t/stats           ?q=<b64>[&res_h3=N][&release=v][&db=name] → value summary
   GET /h3t/meta                                          [&db=name]  → schema + release
   GET /h3t/health                                                    → liveness
+  GET /h3t/subtree ?aphiaid=&res=[&decade=][&bbox=w,s,e,n][&format=parquet|json]
+                                   → per-cell indicators for an AphiaID subtree
+  GET /h3t/taxon   ?q=<prefix>[&limit=20]                → taxon name search
+  GET /h3t/taxon/{aphiaid}                               → one taxon + children
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
+import os
+import tempfile
+import time
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
+
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
@@ -20,10 +30,18 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from . import config, db, h3t_query, prune, tiles
+from . import config, db, h3t_query, prune, subtree, tiles
 from .sql_validate import validate as validate_sql
 
 log = logging.getLogger("h3t")
+# uvicorn configures only its own loggers; give ours a handler so the per-request
+# query time / row count lines reach `docker compose logs h3t`
+if not log.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    log.addHandler(_h)
+    log.setLevel(logging.INFO)
+    log.propagate = False
 
 
 @asynccontextmanager
@@ -34,6 +52,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         threads=config.DUCKDB_THREADS,
         memory_limit=config.DUCKDB_MEMORY_LIMIT)
     app.state.default_db = default_name
+    if config.SUBTREE_ENABLED:
+        path = db.db_path(default_name)
+        if path.exists():
+            t0 = time.perf_counter()
+            ok = subtree.init(
+                path,
+                threads=config.SUBTREE_THREADS,
+                memory_limit=config.SUBTREE_MEMORY_LIMIT,
+                rollup=config.SUBTREE_ROLLUP)
+            log.info("subtree %s on %s (%.1fs)",
+                     "ready" if ok else "disabled: no taxon/occ_h3 table",
+                     path, time.perf_counter() - t0)
     log.info("h3t ready: dbs=%s default=%s", db.db_names(), default_name)
     yield
 
@@ -42,10 +72,11 @@ app = FastAPI(title="api-h3t", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[config.CORS_ORIGIN],
+    allow_origins=config.CORS_ORIGINS,
     allow_methods=["GET", "OPTIONS"],
     allow_headers=["Content-Type", "If-None-Match"],
-    expose_headers=["ETag", "X-Calcofi-Release", "X-Calcofi-Db-Mtime", "X-Cache"],
+    expose_headers=["ETag", "X-Calcofi-Release", "X-Calcofi-Db-Mtime", "X-Cache",
+                    "X-Rows", "X-Query-Ms", "X-Aphiaid"],
     max_age=600,
 )
 
@@ -254,3 +285,150 @@ async def meta(
         "available_dbs": db.db_names(),
         "default_db": app.state.default_db,
     }
+
+
+# --- subtree + taxon (dedicated capped DuckDB instance; see app/subtree.py) ---
+
+PARQUET_MEDIA_TYPE = "application/vnd.apache.parquet"
+_subtree_sem = asyncio.Semaphore(config.SUBTREE_CONCURRENCY)
+
+
+def _require_subtree() -> None:
+    if not subtree.enabled():
+        raise HTTPException(503, "subtree/taxon endpoints unavailable: the store has no taxon table")
+
+
+def _subtree_cache_headers(response: Response, key: str) -> str:
+    mtime = db.db_mtime(app.state.default_db)
+    etag  = 'W/"' + hashlib.sha1(f"{key}|{mtime}".encode()).hexdigest()[:20] + '"'
+    response.headers["ETag"]          = etag
+    response.headers["Cache-Control"] = f"public, max-age={config.SUBTREE_MAX_AGE}"
+    response.headers["Vary"]          = "Accept-Encoding"
+    response.headers["X-Calcofi-Db-Mtime"] = mtime
+    return etag
+
+
+async def _run_subtree(fn, *args, what: str):
+    """Run a blocking subtree-instance call under the concurrency cap + timeout."""
+    cur = args[0]
+    async with _subtree_sem:
+        try:
+            return await asyncio.wait_for(
+                run_in_threadpool(fn, *args), timeout=config.SUBTREE_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            try:
+                cur.interrupt()
+            except Exception:
+                log.exception("failed to interrupt timed-out %s query", what)
+            log.warning("%s query timeout (>%.0fs)", what, config.SUBTREE_TIMEOUT_S)
+            raise HTTPException(504, f"query timeout (>{config.SUBTREE_TIMEOUT_S:.0f}s)")
+        except HTTPException:
+            raise
+        except Exception as e:
+            log.exception("%s query failed", what)
+            raise HTTPException(500, str(e)) from e
+
+
+@app.get("/h3t/subtree")
+async def subtree_route(
+    aphiaid: int = Query(..., ge=1, description="WoRMS AphiaID (root of the subtree)"),
+    res: int = Query(..., ge=1, le=7, description="H3 resolution 1-7"),
+    decade: int | None = Query(None, ge=1000, le=2990, description="first year of a decade, e.g. 1990"),
+    bbox: str | None = Query(None, description="w,s,e,n in degrees; required for res >= 6"),
+    format: Literal["parquet", "json"] = "parquet",
+) -> Response:
+    _require_subtree()
+    try:
+        bb = subtree.parse_bbox(bbox)
+        if decade is not None and decade % 10 != 0:
+            raise subtree.SubtreeError("decade must be a year ending in 0, e.g. 1990")
+    except subtree.SubtreeError as e:
+        raise HTTPException(400, str(e)) from e
+    if res >= config.SUBTREE_BBOX_MIN_RES and bb is None:
+        raise HTTPException(400, f"bbox (w,s,e,n) is required for res >= {config.SUBTREE_BBOX_MIN_RES}")
+
+    # row-group prune on the stored res-3 parent: only valid when output cells
+    # are at least as fine as the prune res (coarser cells span many parents)
+    cover = None
+    if bb is not None and res >= subtree.PRUNE_RES and not bb.crosses_antimeridian:
+        c = prune.covering_cells(subtree.PRUNE_RES, bb.w, bb.e, bb.s, bb.n)
+        if c and len(c) <= subtree.MAX_PRUNE_CELLS:
+            cover = c
+
+    cap = config.SUBTREE_MAX_CELLS
+    sql = subtree.subtree_sql(aphiaid, res, decade=decade, bbox=bb,
+                              prune_cells=cover, limit=cap + 1)
+    t0 = time.perf_counter()
+    if format == "parquet":
+        fd, out = tempfile.mkstemp(prefix="h3t_subtree_", suffix=".parquet")
+        os.close(fd)
+        try:
+            nrow = await _run_subtree(subtree.run_copy_parquet, subtree.cursor(), sql, out,
+                                      what="subtree")
+            if nrow <= cap:
+                with open(out, "rb") as f:
+                    body = f.read()
+        finally:
+            try:
+                os.unlink(out)
+            except OSError:
+                pass
+    else:
+        cols, rows = await _run_subtree(subtree.run_rows, subtree.cursor(), sql,
+                                        what="subtree")
+        nrow = len(rows)
+    ms = (time.perf_counter() - t0) * 1000
+    log.info("subtree aphiaid=%d res=%d decade=%s bbox=%s format=%s rows=%d ms=%.0f",
+             aphiaid, res, decade, bbox, format, nrow, ms)
+    if nrow > cap:
+        raise HTTPException(
+            413, f"result exceeds {cap} cells; use a coarser res or a smaller bbox")
+
+    if format == "parquet":
+        response = Response(content=body, media_type=PARQUET_MEDIA_TYPE)
+    else:
+        response = JSONResponse({
+            "aphiaid": aphiaid, "res": res, "decade": decade, "bbox": bbox,
+            "columns": cols,
+            "cells": [dict(zip(cols, r)) for r in rows]})
+    _subtree_cache_headers(
+        response, f"subtree|{aphiaid}|{res}|{decade}|{bbox}|{format}")
+    response.headers["X-Rows"]     = str(nrow)
+    response.headers["X-Query-Ms"] = f"{ms:.0f}"
+    response.headers["X-Aphiaid"]  = str(aphiaid)
+    return response
+
+
+@app.get("/h3t/taxon")
+async def taxon_search(
+    response: Response,
+    q: str = Query(..., min_length=1, max_length=100, description="scientificName prefix"),
+    limit: int = Query(20, ge=1, le=100),
+) -> dict:
+    _require_subtree()
+    t0 = time.perf_counter()
+    cols, rows = await _run_subtree(
+        subtree.run_rows, subtree.cursor(), subtree.taxon_search_sql(limit), [q.strip()],
+        what="taxon")
+    ms = (time.perf_counter() - t0) * 1000
+    log.info("taxon q=%r rows=%d ms=%.0f", q, len(rows), ms)
+    _subtree_cache_headers(response, f"taxon|{q.strip().lower()}|{limit}")
+    response.headers["X-Rows"]     = str(len(rows))
+    response.headers["X-Query-Ms"] = f"{ms:.0f}"
+    return {"q": q, "taxa": [dict(zip(cols, r)) for r in rows]}
+
+
+@app.get("/h3t/taxon/{aphiaid}")
+async def taxon_one(response: Response, aphiaid: int) -> dict:
+    _require_subtree()
+    t0 = time.perf_counter()
+    cols, rows = await _run_subtree(
+        subtree.run_rows, subtree.cursor(), subtree.TAXON_ONE_SQL, [aphiaid],
+        what="taxon")
+    ms = (time.perf_counter() - t0) * 1000
+    log.info("taxon id=%d rows=%d ms=%.0f", aphiaid, len(rows), ms)
+    if not rows:
+        raise HTTPException(404, f"AphiaID {aphiaid} not in the taxon table")
+    _subtree_cache_headers(response, f"taxon_one|{aphiaid}")
+    response.headers["X-Query-Ms"] = f"{ms:.0f}"
+    return dict(zip(cols, rows[0]))

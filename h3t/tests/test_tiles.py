@@ -160,7 +160,7 @@ def test_set_cache_headers_writes_expected():
     set_cache_headers(r, "abc123", release="v1", db_mtime="1700000000")
     assert r.headers["ETag"] == 'W/"abc123"'
     assert r.headers["Cache-Control"] == "public, max-age=600"
-    assert r.headers["Vary"] == "Accept-Encoding"
+    assert "Accept-Encoding" in r.headers["Vary"]  # newer starlette also adds Origin
     assert r.headers["X-Calcofi-Release"] == "v1"
     assert r.headers["X-Calcofi-Db-Mtime"] == "1700000000"
 
