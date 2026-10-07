@@ -435,10 +435,12 @@ services:
       WEB_CONCURRENCY:   "4"
       BACKEND:           duckdb
       STAC_FILE_PATH:    /app/stac_collections
-      PARQUET_URLS_JSON: ${PARQUET_URLS_JSON}
+      PARQUET_URLS_JSON: ${PARQUET_URLS_JSON:?written to .env by workflows/publish_stac_api.qmd}
     volumes:
-      # read-only: the API must never mutate the published catalog
-      - /share/data/derived/stac-api/v8:/app/stac_collections:ro
+      # read-only: the API must never mutate the published catalog. The version is STAC_API_VER in .env,
+      # written by publish_stac_api.qmd beside PARQUET_URLS_JSON: a hardcoded v8 here once served v9's
+      # PARQUET_URLS_JSON against v8's tree, and every collection answered "No Parquet configured" (2026-10-07)
+      - /share/data/derived/stac-api/${STAC_API_VER:?written to .env by workflows/publish_stac_api.qmd}:/app/stac_collections:ro
     ports:
       - "8085:8084"
     restart: unless-stopped
