@@ -10,6 +10,10 @@
 # 302 to the bucket's own HTTPS endpoint -- Range requests included -- so no
 # data bytes transit the server; backups/ stays unreachable.
 #
+# 2026-10-08: the 302 (and a preflight OPTIONS) must carry CORS headers, or every
+# cross-origin fetch / range request from the apps through this host fails with
+# status 0. OPTIONS is answered here with a 204; the page proxies are unchanged.
+#
 # Seeded fault: STORAGE_HOST_CADDYFILE=<the pre-change Caddyfile> must FAIL.
 #   git show HEAD:caddy/Caddyfile > /path/to/old.Caddyfile   # HEAD, before this change is committed
 #   STORAGE_HOST_CADDYFILE=/path/to/old.Caddyfile caddy/test/storage_host_local.sh
@@ -31,6 +35,7 @@ cfg="$tmp/Caddyfile"
 {
   printf '{\n\tadmin off\n\tauto_https off\n}\n'
   awk '/^\(access_log\) \{/{p=1} p{print} p&&/^\}/{exit}' "$src"
+  awk '/^\(s3_cors\) \{/{p=1} p{print} p&&/^\}/{exit}' "$src"
   awk '/^storage\.marinesensitivity\.org, storage\.oceanmetrics\.io \{/{p=1} p{print} p&&/^\}/{exit}' "$src"
 } | sed -e "s#^storage\.marinesensitivity\.org, storage\.oceanmetrics\.io {#$base {#" -e "s#/share/#$tmp/share/#g" > "$cfg"
 grep -q "^$base {" "$cfg" || { echo "could not cut the storage vhost out of $src" >&2; exit 1; }
@@ -68,6 +73,32 @@ is "/backups/anything is 404"               404 "$(code "$base/backups/anything"
 is "/backups/ is 404"                       404 "$(code "$base/backups/")"
 is "404 keeps its text body"                1   "$(curl -s "$base/backups/x" | grep -c '^Not found\.')"
 is "/backups/ never redirects to the bucket" "" "$(loc "$base/backups/x")"
+# CORS (2026-10-08): the redirect carries the headers; OPTIONS is a 204 preflight answer
+ORI='Origin: http://localhost:5179'
+hdr() { curl -s -D - -o /dev/null "$@" | tr -d '\r' | tr 'A-Z' 'a-z'; }   # lower-cased response headers
+has() { grep -c -E "$1" <<<"$2" | sed 's/^[1-9][0-9]*$/1/'; }
+h=$(hdr -H "$ORI" "$base/gazetteer/places/places.pmtiles")
+is "302 for a data object has ACAO *"        1 "$(has '^access-control-allow-origin: \*$' "$h")"
+is "302 exposes Content-Range"               1 "$(has '^access-control-expose-headers:.*content-range' "$h")"
+is "302 allows GET, HEAD"                    1 "$(has '^access-control-allow-methods: get, head$' "$h")"
+is "302 is cacheable for a day"              1 "$(has '^cache-control: public, max-age=86400$' "$h")"
+is "302 for a data object is still a 302"    302 "$(code -H "$ORI" "$base/gazetteer/places/places.pmtiles")"
+h=$(hdr -H "$ORI" -H 'Range: bytes=-65536' "$base/gazetteer/places/places.pmtiles")
+is "suffix-range 302 has ACAO *"             1 "$(has '^access-control-allow-origin: \*$' "$h")"
+h=$(hdr -X OPTIONS -H "$ORI" -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: range,if-none-match' "$base/gazetteer/places/places.pmtiles")
+is "OPTIONS preflight -> 204"                204 "$(code -X OPTIONS -H "$ORI" -H 'Access-Control-Request-Method: GET' "$base/gazetteer/places/places.pmtiles")"
+is "OPTIONS has ACAO *"                      1 "$(has '^access-control-allow-origin: \*$' "$h")"
+is "OPTIONS allows the Range header"         1 "$(has '^access-control-allow-headers:.*range' "$h")"
+is "OPTIONS allows If-Match, If-None-Match"  1 "$(has '^access-control-allow-headers:.*if-match.*if-none-match' "$h")"
+is "OPTIONS has Max-Age"                     1 "$(has '^access-control-max-age: 3600$' "$h")"
+is "OPTIONS is not redirected"               "" "$(loc -X OPTIONS -H "$ORI" "$base/gazetteer/places/places.pmtiles")"
+is "OPTIONS on marine-atlas -> 204"          204 "$(code -X OPTIONS -H "$ORI" "$base/marine-atlas/latest.txt")"
+is "OPTIONS on /backups/ stays 404"          404 "$(code -X OPTIONS -H "$ORI" "$base/backups/x")"
+# the folder / page proxies are unchanged: still proxied (200), not the redirect's headers
+is "folder proxy still 200 with Origin"      200 "$(code -H "$ORI" "$base/marine-atlas/")"
+h=$(hdr -H "$ORI" "$base/marine-atlas/index.html")
+is "page proxy has no day-long Cache-Control" 0 "$(grep -c -E '^cache-control: public, max-age=86400$' <<<"$h" || true)"
+is "page proxy ACAO not duplicated (S3's own)" 1 "$(grep -c -E '^access-control-allow-origin:' <<<"$h" || true)"
 sleep 0.5
 is "requests are logged"                    1   "$( [ -s "$tmp/share/logs/caddy/storage.log" ] && echo 1 || echo 0)"
 

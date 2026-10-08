@@ -14,6 +14,19 @@
 	}
 }
 
+# CORS for the storage.* redirect to S3 (2026-10-08): the 302 itself must carry
+# the headers, and OPTIONS must be answered here, because a browser preflights
+# before it ever follows the redirect. Not (cors): that one only answers when
+# the request has an Origin and adds no Expose/Methods/Max-Age.
+(s3_cors) {
+	header {
+		Access-Control-Allow-Origin "*"
+		Access-Control-Allow-Methods "GET, HEAD"
+		Access-Control-Expose-Headers "Content-Range, Content-Length, Accept-Ranges, ETag"
+		Access-Control-Max-Age "3600"
+	}
+}
+
 # Every vhost logs (2026-10-02 egress review: only storage/preview/file did, so
 # nobody could say who was crawling the other ~17). Every byte served is EC2
 # egress, so the log is what turns a surprise bill into a name.
@@ -176,6 +189,12 @@ Disallow: /
 # directly. 302, not 301, because the store may move to another provider and a
 # cached 301 would pin clients to the old one.
 #
+# The redirect carries CORS (2026-10-08): the apps' pmtiles / COG / Parquet range
+# requests to this host failed with status 0 because the bare 302 (and a bare 302
+# on the OPTIONS preflight) had no Access-Control-* headers. The 302 now has
+# them (snippet s3_cors) and OPTIONS is a 204 here; the bucket itself answers
+# with Access-Control-Allow-Origin: * once the browser lands on it.
+#
 # Named "storage" rather than "s3" so the URL survives a move to another
 # provider.
 # storage.oceanmetrics.io is the same bucket under the Ocean Metrics brand (the
@@ -209,6 +228,16 @@ Disallow: /*.zip$
 	# server-side half of the restriction the index generator applies.
 	@atlas path_regexp atlas ^/(marine-atlas|gazetteer)(/|$)
 	handle @atlas {
+		# CORS preflight, answered here (a redirect on OPTIONS fails the preflight).
+		# Suffix ranges (bytes=-N, how Parquet readers fetch the footer) and
+		# If-Match / If-None-Match are not CORS-safelisted, so they DO preflight.
+		@preflight method OPTIONS
+		handle @preflight {
+			import s3_cors
+			header Access-Control-Allow-Headers "Range, If-Match, If-None-Match, If-Range, Content-Type"
+			respond 204
+		}
+
 		# folder URL -> the index.html object standing in for a listing
 		@dir path */
 		handle @dir {
@@ -230,6 +259,8 @@ Disallow: /*.zip$
 
 		# everything else is a data object: hand the client to S3, move no bytes
 		handle {
+			import s3_cors
+			header Cache-Control "public, max-age=86400"
 			redir https://s3.us-east-1.amazonaws.com/oceanmetrics.io-public{uri} 302
 		}
 	}
