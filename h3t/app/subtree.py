@@ -252,6 +252,10 @@ SELECT taxonID, SUM(records)::BIGINT AS records FROM up GROUP BY 1"""
 _con: duckdb.DuckDBPyConnection | None = None
 _lock = threading.Lock()
 _has_taxon: bool = False
+# the store's tables, and the file the store path resolves to (the versioned
+# obis_h3_global_vYYYYMMDD.duckdb behind the obis_h3.duckdb symlink)
+_tables: frozenset[str] = frozenset()
+_store: str = ""
 
 
 def init(
@@ -267,7 +271,7 @@ def init(
     `taxon` table. `rollup` builds the per-taxon subtree record counts used by
     the taxon search (a few seconds at startup, a few MB of RAM).
     """
-    global _con, _has_taxon
+    global _con, _has_taxon, _tables, _store
     tmp = temp_directory or os.path.join(os.getenv("TMPDIR", "/tmp"), "h3t_subtree")
     con = duckdb.connect(config={
         "threads":        int(threads),
@@ -281,6 +285,8 @@ def init(
         "SELECT table_name FROM information_schema.tables "
         "WHERE table_catalog = 'store'").fetchall()}
     _has_taxon = {"taxon", "occ_h3"} <= tabs
+    _tables = frozenset(tabs)
+    _store = Path(path).resolve().name
     if _has_taxon:
         if rollup:
             con.execute(ROLLUP_SQL)
@@ -289,6 +295,15 @@ def init(
                         "(taxonID BIGINT, records BIGINT)")
     _con = con
     return _has_taxon
+
+
+def has_table(name: str) -> bool:
+    return name.lower() in _tables
+
+
+def store_name() -> str:
+    """Basename of the store file actually open (symlink resolved)."""
+    return _store
 
 
 def enabled() -> bool:

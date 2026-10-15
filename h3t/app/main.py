@@ -7,6 +7,8 @@ Endpoints (mirror the R Plumber service):
   GET /h3t/health                                                    → liveness
   GET /h3t/subtree ?aphiaid=&res=[&decade=][&bbox=w,s,e,n][&format=parquet|json]
                                    → per-cell indicators for an AphiaID subtree
+  GET /h3t/cell    ?h3=[&aphiaid=|&eov=|&rank=&taxon=][&decade=][&release=]
+                                   → the species in one cell (records, years)
   GET /h3t/taxon   ?q=<prefix>[&limit=20]                → taxon name search
   GET /h3t/taxon/{aphiaid}                               → one taxon + children
 """
@@ -30,7 +32,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from . import config, db, h3t_query, prune, subtree, tiles
+from . import cell, config, db, h3t_query, prune, subtree, tiles
 from .sql_validate import validate as validate_sql
 
 log = logging.getLogger("h3t")
@@ -396,6 +398,46 @@ async def subtree_route(
     response.headers["X-Rows"]     = str(nrow)
     response.headers["X-Query-Ms"] = f"{ms:.0f}"
     response.headers["X-Aphiaid"]  = str(aphiaid)
+    return response
+
+
+@app.get("/h3t/cell")
+async def cell_route(
+    h3: str = Query(..., min_length=15, max_length=16, description="H3 cell index (hex), res 1-7"),
+    aphiaid: int | None = Query(None, ge=1, description="only this WoRMS AphiaID's subtree"),
+    eov: str | None = Query(None, min_length=1, max_length=64, description="only this EOV (the store's eov table)"),
+    rank: str | None = Query(None, description="phylum, class, order or family (with taxon)"),
+    taxon: str | None = Query(None, min_length=1, max_length=200, description="the rank's taxon name"),
+    decade: int | None = Query(None, ge=1000, le=2990, description="first year of a decade, e.g. 1990"),
+    release: str | None = Query(None, max_length=32, description="the client's release id: a cache key only"),
+) -> JSONResponse:
+    _require_subtree()
+    try:
+        cid, res = cell.parse_cell(h3)
+        q = cell.CellQuery(cid, res, aphiaid=aphiaid, eov=eov, rank=rank, taxon=taxon,
+                           decade=decade)
+    except subtree.SubtreeError as e:
+        raise HTTPException(400, str(e)) from e
+    if eov is not None and not subtree.has_table("eov"):
+        raise HTTPException(503, "eov filter unavailable: the store has no eov table")
+
+    sql, params = cell.cell_species_sql(q)
+    t0 = time.perf_counter()
+    cols, rows = await _run_subtree(subtree.run_rows, subtree.cursor(), sql, params,
+                                    what="cell")
+    ms = (time.perf_counter() - t0) * 1000
+    species = [dict(zip(cols, r)) for r in rows]
+    h = format(cid, "x")
+    log.info("cell h3=%s aphiaid=%s eov=%s rank=%s taxon=%s decade=%s rows=%d ms=%.0f",
+             h, aphiaid, eov, rank, taxon, decade, len(rows), ms)
+    response = JSONResponse({
+        "h3": h, "res": res, "aphiaid": aphiaid, "eov": eov, "rank": rank, "taxon": taxon,
+        "decade": decade, "store": subtree.store_name(),
+        "n": sum(s["records"] for s in species), "sp": len(species),
+        "columns": list(cols), "species": species})
+    _subtree_cache_headers(response, f"cell|{h}|{aphiaid}|{eov}|{rank}|{taxon}|{decade}")
+    response.headers["X-Rows"]     = str(len(rows))
+    response.headers["X-Query-Ms"] = f"{ms:.0f}"
     return response
 
 

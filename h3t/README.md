@@ -168,6 +168,56 @@ https://h3tcache.marinesensitivity.org/h3t/subtree?aphiaid=137092&res=7&bbox=-72
 On 413 step `res` down by one (or shrink the bbox); on 400 the JSON `reason`
 says which parameter is wrong. Join on `h3` (string) or `cell_id` (BIGINT).
 
+## Cell endpoint (`/h3t/cell`)
+
+The species behind one cell's indicators, for the obis-hex Cell pane
+([oceanmetrics/obis-hex#5](https://github.com/oceanmetrics/obis-hex/issues/5)).
+Code in `app/cell.py`; it runs on the subtree instance (same caps, timeout and
+concurrency slots).
+
+```
+GET /h3t/cell?h3=<hex, res 1-7>[&aphiaid=<int> | &eov=<key> | &rank=<rank>&taxon=<name>][&decade=<yyy0>][&release=vYYYYMMDD]
+```
+
+- **Filters**, at most one layer filter, each as its release layer is built:
+  none = all taxa; `aphiaid` = the WoRMS subtree (as `/h3t/subtree`); `eov` = the
+  store's `eov` table (503 if the store has none); `rank` (`phylum`, `class`,
+  `order`, `family`) + `taxon` = the `occ_h3` rank column; `decade` = `date_year`
+  in `[decade, decade + 9]`. `release` is not read: it only keys the cache, so a
+  client passing its release id gets a fresh entry after each release.
+- **Response** (JSON): `{h3, res, aphiaid, eov, rank, taxon, decade, store, n, sp,
+  columns, species: [{species, aphiaid, phylum, class, order, family, records,
+  year_min, year_max}]}`, most records first. `n` and `sp` are the list's sums
+  and equal the cell's indicators in the same store (`store` is the file the
+  `obis_h3.duckdb` symlink resolves to, e.g. `obis_h3_global_v20260728.duckdb`,
+  so a client can tell when the service runs a different release than it
+  reads). Species are grouped by the `species` name, as `sp` counts them;
+  `aphiaid` is that name's WoRMS species-rank taxon (accepted first), else the
+  most-recorded AphiaID of the group. `year_min` / `year_max` come from
+  `date_year` (null when no record of the species has a year; there are no
+  day-level dates in `occ_h3`). Headers as `/h3t/subtree` (`X-Rows`, `X-Query-Ms`,
+  `ETag`, `Cache-Control`).
+- **Reads one cell's row groups**: a res-r cell is read from the occ_h3 tier
+  t >= r; its descendants form one id range (H3 digits run from coarse to fine),
+  so `hex_prune BETWEEN lo AND hi` prunes to its res-3 parent (or its res-3
+  children for res 1-2), then `h3_cell_to_parent(cell_id, r) = cell` is exact.
+- **Timings and size** (Mac mini, full store `obis_h3_global_v20260728`, the
+  5 busiest cells of each layer, `tests/test_cell_store.py`): all taxa 18-42 ms
+  (largest: res 1 `81197ffffffffff`, 8 814 species, 14.8 M records, 42 ms; JSON
+  1.76 MB, 252 KB gzipped, so Caddy encodes the h3t hosts); class Mammalia 11-21
+  ms; EOV fish 17-23 ms; AphiaID 1837 ~165 ms (the taxon tree walk). Every species
+  resolved to a species-rank AphiaID in the three cells checked.
+- **Parity**: `tests/test_cell_store.py` checks that each list sums to `n` and
+  counts to `sp` of `idx_h3` (res 1-7), `idx_h3_taxon` (class), `idx_h3_eov` and
+  the subtree SQL (AphiaID); `tests/test_cell.py` does the same on a mini store
+  with expected lists computed in Python.
+
+```
+https://h3tcache.marinesensitivity.org/h3t/cell?h3=85291a6ffffffff&release=v20260728
+https://h3tcache.marinesensitivity.org/h3t/cell?h3=872b18902ffffff&eov=fish&decade=2010
+https://h3tcache.marinesensitivity.org/h3t/cell?h3=83464efffffffff&rank=class&taxon=Mammalia
+```
+
 ## Configuration
 
 See upstream env vars (`H3T_DBS`, `H3T_DEFAULT_DB`, `H3T_MAX_ROWS`,
