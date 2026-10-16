@@ -32,8 +32,7 @@ Everything else about the toolkit is public at
 
 <footer>
   What is shown here is <em>under review</em>: methods, datasets and numbers may change before release.
-  Please do not redistribute. Public releases: <a href="https://app.marinesensitivity.org/scores/">scores</a> ·
-  <a href="https://app.marinesensitivity.org/species/">species</a> ·
+  Please do not redistribute. Public releases: <a href="https://marinesensitivity.org/atlas/">the Atlas</a> ·
   <a href="https://marinesensitivity.org/docs/">docs</a>.
 </footer>
 
@@ -66,8 +65,8 @@ Everything else about the toolkit is public at
           (v.title ? " — " + esc(v.title) : "") +
           " <span class='muted'>(" + esc(v.status) + (v.released ? " · " + esc(v.released) : "") + ")</span>" +
           "<div class='links'>" +
-          "<a href='/" + ver + "/scores/'>Scores app</a>" +
-          "<a href='/" + ver + "/species/'>Species app</a>" +
+          "<a href='/" + ver + "/atlas/'>Atlas</a>" +
+          "<a href='/" + ver + "/atlas/?lens=species'>Atlas, species lens</a>" +
           "<a href='/docs/" + ver + "/'>Documentation</a>" +
           "</div></li>";
       });
@@ -78,7 +77,7 @@ Everything else about the toolkit is public at
     })
     .catch(function (e) {
       out.innerHTML = "<p class='muted'>Could not read the version registry (" + esc(e.message) + "). " +
-        "The apps live at <code>/{version}/scores/</code> and <code>/{version}/species/</code>, the docs at <code>/docs/{version}/</code>.</p>";
+        "The Atlas lives at <code>/{version}/atlas/</code> (the old <code>/{version}/scores/</code> and <code>/{version}/species/</code> links redirect to it), the docs at <code>/docs/{version}/</code>.</p>";
     });
 })();
 </script>

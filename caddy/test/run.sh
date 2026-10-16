@@ -6,12 +6,16 @@
 # file, but a TEST HS256 jwtauth (caddy-jwt's README key; the token below is
 # valid until 2285, iss https://api.example.com, aud https://api.example.io,
 # username ggicci) so the routes can be exercised without Cloudflare. It joins
-# the compose network, so rstudio:3839 (the preview Shiny Server instance) is
-# reachable and the app really answers. Every assertion is one a broken routing
-# would fail: 401 without a token; /v8/scores/ renders v8 (ms-ver) with
-# ms-preview=1 and the test identity in the badge; ?ver=v7 on that path is
-# OVERRIDDEN; the sockjs path proxies; the pre-path spelling redirects and is
-# never proxied; docs and landing serve.
+# the compose network, so the preview Shiny instance (rstudio:3839) is reachable --
+# and, since the Atlas cutover (B2, 2026-10-16), asserted to be NEVER reached:
+# every /{ver}/scores|species/ and ?ver= spelling answers a 301 into the Atlas
+# of the same version with the query intact. Every assertion is one a broken
+# routing would fail: 401 without a token (the redirects included -- none may
+# answer before jwtauth); the 301 and its exact Location; an unversioned or
+# malformed `ver` never becomes a redirect target; docs, landing and the atlas
+# serve. (The same shapes, with 100+ cases, are proven on a laptop without
+# jwtauth by caddy/test/atlas_cutover_local.sh; this is the real-image,
+# real-jwtauth half DEPLOY_CADDY runs.)
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
@@ -51,47 +55,41 @@ req() { # req <path> [curl args...] -> sets CODE LOC and $body
   CODE=${out%% *}; LOC=${out#* }
 }
 auth=(-H "Cf-Access-Jwt-Assertion: $TOKEN")
-meta() { grep -o "<meta name=\"$1\" content=\"[^\"]*\"" "$body" | sed 's/.*content="//; s/"$//' | head -1; }
 
 echo "preview routes test via $name ($img on $net), version $ver"
 
 req "/$ver/scores/";                            [ "$CODE" = 401 ] && ok "no token -> 401" || bad "no token" "$CODE"
 req "/";                                        [ "$CODE" = 401 ] && ok "landing without token -> 401" || bad "landing no token" "$CODE"
 
-req "/$ver/scores/" "${auth[@]}"
-if [ "$CODE" = 200 ] && [ "$(meta ms-ver)" = "$ver" ] && [ "$(meta ms-preview)" = 1 ]; then ok "/$ver/scores/ -> app, ms-ver=$ver, ms-preview=1"; else bad "/$ver/scores/" "code=$CODE ms-ver=$(meta ms-ver) ms-preview=$(meta ms-preview)"; fi
-grep -q "ggicci" "$body" && ok "X-MS-User from the verified claim reaches the badge" || bad "X-MS-User" "identity not in page"
+req "/$ver/species/?mdl_key=abc";               [ "$CODE" = 401 ] && ok "species redirect without a token -> 401 (never answers before jwtauth)" || bad "species no token" "$CODE"
+req "/scores/?ver=$ver";                        [ "$CODE" = 401 ] && ok "pre-path ?ver= redirect without a token -> 401" || bad "?ver= no token" "$CODE"
+req "/$ver/scores";                             [ "$CODE" = 401 ] && ok "no-slash redirect without a token -> 401" || bad "noslash no token" "$CODE"
 
-req "/$ver/scores/?ver=v7&probe=1" "${auth[@]}"
-[ "$CODE" = 200 ] && [ "$(meta ms-ver)" = "$ver" ] && ok "a client's ?ver=v7 is INERT on /$ver/ (ms-ver=$ver)" || bad "ver override" "code=$CODE ms-ver=$(meta ms-ver)"
+# --- the cutover: every Shiny URL is a 301 into the Atlas, query intact, and is
+# never proxied (a 200 here would be the Shiny app answering) ------------------------
+want() { # want <label> <path> <relative Location>
+  req "$2" "${auth[@]}"
+  if [ "$CODE" = 301 ] && [ "$LOC" = "http://$name:8080$3" ]; then ok "$1: $2 -> 301 $3"; else bad "$1: $2" "code=$CODE loc=$LOC (want 301 $3)"; fi
+}
+want "scores"                "/$ver/scores/"                               "/$ver/atlas/"
+want "scores, no slash"      "/$ver/scores"                                "/$ver/atlas/"
+want "scores + query"        "/$ver/scores/?mdl_key=abc&splash=false"      "/$ver/atlas/?mdl_key=abc&splash=false"
+want "scores + client ver"   "/$ver/scores/?ver=v7&probe=1"                "/$ver/atlas/?ver=v7&probe=1"
+want "species"               "/$ver/species/"                              "/$ver/atlas/?lens=species"
+want "species, no slash"     "/$ver/species"                               "/$ver/atlas/?lens=species"
+want "species + mdl_key"     "/$ver/species/?mdl_key=am%7CFis-29291"       "/$ver/atlas/?lens=species&mdl_key=am%7CFis-29291"
+want "species + mdl_seq"     "/$ver/species/?mdl_seq=1434"                 "/$ver/atlas/?lens=species&mdl_seq=1434"
+want "sockjs/subresource"    "/$ver/scores/__sockjs__/info"                "/$ver/atlas/"
+want "pre-path scores"       "/scores/?ver=$ver&mdl_key=abc"               "/$ver/atlas/?ver=$ver&mdl_key=abc"
+want "pre-path species"      "/species/?ver=$ver"                          "/$ver/atlas/?lens=species&ver=$ver"
+want "pre-path, no slash"    "/species?ver=$ver&mdl_seq=1"                 "/$ver/atlas/?lens=species&ver=$ver&mdl_seq=1"
 
-req "/$ver/species/" "${auth[@]}"
-[ "$CODE" = 200 ] && [ "$(meta ms-ver)" = "$ver" ] && ok "/$ver/species/ -> app, ms-ver=$ver" || bad "/$ver/species/" "code=$CODE ms-ver=$(meta ms-ver)"
-
-req "/$ver/scores/__sockjs__/info" "${auth[@]}"
-[ "$CODE" = 200 ] && grep -q websocket "$body" && ok "sockjs info proxies under the version prefix" || bad "sockjs" "code=$CODE"
-
-req "/$ver/scores/shared/shiny.min.js" "${auth[@]}"
-[ "$CODE" = 200 ] && ok "static assets proxy under the version prefix" || bad "assets" "code=$CODE"
-
-# REGRESSION (2026-08-27): shiny-server serves its own client bundle from a
-# handler that 404s if the request carries ANY query string, so forcing ?ver=
-# on subresources broke the app -- sidebar rendered, map stuck on "Loading
-# map...", because preShinyInit was never defined. `shared/` above does NOT
-# catch this: it tolerates a query. These two do.
-for a in __assets__/shiny-server-client.min.js __assets__/sockjs.min.js; do
-  req "/$ver/scores/$a" "${auth[@]}"
-  [ "$CODE" = 200 ] && ok "shiny-server client bundle: $a" || bad "$a" "code=$CODE (query forced onto a subresource?)"
+# the redirect target is built from the PATH, or from `ver` only after it is proved to be
+# a version id: a crafted ver= must never become another path or host
+for bad_ver in "junk" "//evil.example" "/../evil"; do
+  req "/scores/?ver=$bad_ver" "${auth[@]}"
+  [ "$CODE" = 302 ] && [ "$LOC" = "http://$name:8080/" ] && ok "/scores/?ver=$bad_ver -> 302 / (not a redirect target)" || bad "crafted ver=$bad_ver" "code=$CODE loc=$LOC"
 done
-
-req "/$ver/scores" "${auth[@]}"
-[ "$CODE" = 308 ] && [ "${LOC%\?*}" = "http://$name:8080/$ver/scores/" ] && ok "/$ver/scores -> 308 /$ver/scores/" || bad "noslash redirect" "code=$CODE loc=$LOC"
-
-req "/scores/?ver=$ver" "${auth[@]}"
-[ "$CODE" = 301 ] && [ "$LOC" = "http://$name:8080/$ver/scores/" ] && ok "/scores/?ver=$ver -> 301 /$ver/scores/ (never proxied)" || bad "query->path redirect" "code=$CODE loc=$LOC"
-
-req "/species?ver=$ver" "${auth[@]}"
-[ "$CODE" = 301 ] && [ "$LOC" = "http://$name:8080/$ver/species/" ] && ok "/species?ver=$ver -> 301 /$ver/species/" || bad "query->path redirect (noslash)" "code=$CODE loc=$LOC"
 
 req "/scores/" "${auth[@]}"
 [ "$CODE" = 302 ] && [ "$LOC" = "http://$name:8080/" ] && ok "/scores/ without ver -> 302 / (never proxied)" || bad "unversioned app path" "code=$CODE loc=$LOC"
@@ -105,8 +103,8 @@ req "/docs/" "${auth[@]}"
 docker run --rm --network "$net" "$curl_img" -s -m 30 -o /dev/null -D - "${auth[@]}" "http://$name:8080/" | grep -qi "x-robots-tag: noindex" && ok "X-Robots-Tag noindex" || bad "X-Robots-Tag" "missing"
 
 # --- atlas: /{ver}/atlas/... -> caddy/atlas_preview_routes.caddy -----------
-# bare-string/bool/number JSON field extraction, same no-jq policy as meta()
-# above -- session.json is JSON, not the apps' HTML meta tags.
+# bare-string/bool/number JSON field extraction (no jq in the test image) --
+# session.json is JSON.
 jf() { grep -o "\"$1\"[[:space:]]*:[[:space:]]*[^,}]*" "$body" | head -1 | sed -E 's/.*:[[:space:]]*//; s/^"//; s/"$//'; }
 # keys_exact "k1 k2" -> 0 iff $body's (flat) JSON object has EXACTLY these
 # keys. Pure grep/sed, same no-jq policy; relies on session.json never

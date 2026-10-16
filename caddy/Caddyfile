@@ -315,72 +315,23 @@ app.marinesensitivity.org {
 
 	# ---- MST app cutover -------------------------------------------------
 	#
-	# /scores and /species are now ONE app that renders any published release
-	# from ?ver=. Every former per-version instance redirects to it rather than
-	# 404ing, so old links, bookmarks and anything in a published report keep
-	# resolving — to the SAME release they always showed.
+	# ATLAS CUTOVER B2 (2026-10-16): the Shiny /scores and /species apps are
+	# replaced by the static Atlas (https://marinesensitivity.org/atlas/), and
+	# every Shiny URL -- /{ver}/scores|species/, the unversioned /scores/ and
+	# /species/ (+ ?ver=), and the retired /mapgl /mapsp /mapgl_v{n} /mapsp_v{n}
+	# /scores_v{n} /species_v{n} aliases -- 301s into it with the query carried
+	# verbatim (the Atlas rewrites mdl_key / mdl_seq itself). A RESTRICTED version
+	# (PREVIEW_RESTRICTED_VERSIONS: a regex alternation such as "v8|v9" from the
+	# server .env -- the same manual step as PREVIEW_REVIEWERS_<VER> and
+	# CF_ACCESS_AUD, asserted against versions.json by DEPLOY_CADDY) goes straight
+	# to https://preview.marinesensitivity.org/{ver}/atlas/ with a 302. Unset, it
+	# matches nothing. The rules, their order and why live in
+	# atlas_cutover_public.caddy, which caddy/test/atlas_cutover_local.sh proves.
 	#
-	# The v7 apps were `mapgl` (scores) and `mapsp` (species); v1-v6 were
-	# `mapgl_v{n}` / `mapsp_v{n}`; v6 and v8 also had `scores_v{n}` /
-	# `species_v{n}` aliases. All of them land on /scores or /species with the
-	# version they represent.
-	#
-	# 301 (permanent): these instances are not coming back, and a permanent
-	# redirect lets browsers and crawlers stop asking.
-	#
-	# `&{query}` IS THE POINT OF THE REDIRECT. A redir target that carries its own
-	# query string REPLACES the incoming one, so these rules used to answer
-	# /mapsp/?mdl_seq=1434 with /species/?ver=v7 -- dropping the very thing the
-	# link was about. The app then opened on its default taxon, which is why every
-	# deep link in the final report, and the ones in issue #5, silently showed the
-	# leatherback turtle. Every published per-species link is of this form, so a
-	# redirect that keeps the path and loses the id is worse than a 404: it looks
-	# like it worked (MarineSensitivity/apps#6).
-	#
-	# An empty {query} leaves a harmless trailing "&", which parses to nothing.
-	@scores_ver path_regexp scv ^/(?:mapgl|scores)_(v[0-9]+[a-z]?)(?:/(.*))?$
-	redir @scores_ver /{re.scv.1}/scores/?{query} 301
-
-	@species_ver path_regexp spv ^/(?:mapsp|species)_(v[0-9]+[a-z]?)(?:/(.*))?$
-	redir @species_ver /{re.spv.1}/species/?{query} 301
-
-	# the unsuffixed v7 instances: `mapgl`/`mapsp` were what /scores and
-	# /species pointed at, so they carry v7 explicitly
-	@scores_v7 path_regexp sc7 ^/mapgl(?:/(.*))?$
-	redir @scores_v7 /v7/scores/?{query} 301
-
-	@species_v7 path_regexp sp7 ^/mapsp(?:/(.*))?$
-	redir @species_v7 /v7/species/?{query} 301
-
-	# A RESTRICTED release asked for on the PUBLIC host goes to the review host
-	# (2026-08-28). The app process here cannot resolve a restricted version
-	# (msens::atlas_allow_access), so /v8/scores/ used to render the promoted
-	# release with no hint -- fail-closed, but from a published link it simply
-	# looked like the wrong version (the homepage's v8 links "oddly ended up on
-	# v7"). Every spelling funnels through the path form first -- the retirement
-	# 301s above, the ?ver= 301s in app_version_routes.caddy -- so this ONE
-	# matcher catches them all and {uri} carries the query (deep links keep
-	# their mdl_key). 302, not 301: a version stops being restricted when it is
-	# released, and a cached 301 would keep sending visitors to the review host.
-	#
-	# `atlas` joined this matcher 2026-09-24 (atlas-9): the static atlas app has
-	# no canonical URL on THIS host (its public home is marinesensitivity.org/
-	# atlas/?ver=, GitHub Pages -- a different origin this Caddyfile does not
-	# serve at all), so nothing here would otherwise answer /{ver}/atlas/ except
-	# falling through to `reverse_proxy rstudio:3838`, which does not know that
-	# path. Covering it keeps the same guarantee scores/species already have --
-	# a reviewer who guesses the /v9/atlas/ shape by analogy lands on the review
-	# host, never a 404 that looks like "this version doesn't have an atlas" --
-	# and it is what sends a restricted version's atlas request to the ONE place
-	# that can actually serve it (preview_routes.caddy's atlas import).
-	#
-	# PREVIEW_RESTRICTED_VERSIONS is a regex alternation of the restricted
-	# versions ("v8|v9") from the server .env -- the same manual step as
-	# PREVIEW_REVIEWERS_<VER> and CF_ACCESS_AUD -- and DEPLOY_CADDY asserts it
-	# against versions.json before restarting. Unset, it matches nothing and the
-	# prior behaviour (fall back to the promoted release) stands.
-	@restricted_app path_regexp rapp ^/(?:{$PREVIEW_RESTRICTED_VERSIONS:__none__})/(?:scores|species|atlas)(?:/.*)?$
-	redir @restricted_app https://preview.marinesensitivity.org{uri} 302
+	# Before B2 this block held the `&{query}` aliases and the restricted-version
+	# 302 (MarineSensitivity/apps#6: a redir target carrying its own query REPLACES
+	# the incoming one). Rolling back = reverting the B2 commit + DEPLOY_CADDY=1.
+	import atlas_cutover_public.caddy
 
 	# THE VERSION IS THE PATH here too (2026-08-27). One definition, shared with
 	# the preview vhost, so the two hosts cannot drift: /v7/scores/ is canonical,
@@ -466,8 +417,7 @@ preview.marinesensitivity.org {
 				<p>This host serves <b>restricted, pre-release</b> versions of the apps and documentation
 				to invited reviewers, and requires sign-in through the project's access gateway —
 				which is not yet in front of this address, so nothing here can be viewed at the moment.</p>
-				<p>Public releases: <a href="https://app.marinesensitivity.org/scores/">Scores</a> ·
-				<a href="https://app.marinesensitivity.org/species/">Species</a> ·
+				<p>Public releases: <a href="https://marinesensitivity.org/atlas/">the Atlas</a> ·
 				<a href="https://marinesensitivity.org/docs/">Documentation</a>.</p>
 				HTML 401
 		}

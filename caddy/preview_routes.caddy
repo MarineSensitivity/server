@@ -20,6 +20,63 @@
 # a reviewer's page must never be indexed
 header X-Robots-Tag "noindex, nofollow"
 
+# --- ATLAS CUTOVER B2 (2026-10-16): the Shiny apps are replaced by the Atlas ----
+# Every Shiny URL of this host 301s to the Atlas of the SAME version, query carried
+# verbatim (the Atlas rewrites legacy mdl_key / mdl_seq -> sp itself):
+#   /{v}/scores/...?Q   -> /{v}/atlas/?Q
+#   /{v}/species/...?Q  -> /{v}/atlas/?lens=species&Q
+#   /scores|species/?ver={v}&Q (the pre-path spelling) -> the same, `ver` left in Q
+#                          (inert: on this host the version is the PATH)
+# One hop; each rule is a PAIR (empty query / non-empty query) so no Location ends in
+# a dangling "?" or "&". Every redirect is wrapped in `handle`: a bare `redir` sorts
+# AHEAD of jwtauth and would answer an unauthenticated request, and `handle`s keep the
+# written order, so these run before the (now unreachable) Shiny proxy below. The
+# /{v}/ stays in the PATH, so Cloudflare Access still scopes the redirect by version.
+@pvsc_n {
+	path_regexp pvsc ^/(v[0-9]+[a-z]?)/scores(?:/.*)?$
+	expression {query} == ""
+}
+handle @pvsc_n {
+	redir * /{re.pvsc.1}/atlas/ 301
+}
+@pvsc_q {
+	path_regexp pvsc ^/(v[0-9]+[a-z]?)/scores(?:/.*)?$
+	expression {query} != ""
+}
+handle @pvsc_q {
+	redir * /{re.pvsc.1}/atlas/?{query} 301
+}
+@pvsp_n {
+	path_regexp pvsp ^/(v[0-9]+[a-z]?)/species(?:/.*)?$
+	expression {query} == ""
+}
+handle @pvsp_n {
+	redir * /{re.pvsp.1}/atlas/?lens=species 301
+}
+@pvsp_q {
+	path_regexp pvsp ^/(v[0-9]+[a-z]?)/species(?:/.*)?$
+	expression {query} != ""
+}
+handle @pvsp_q {
+	redir * /{re.pvsp.1}/atlas/?lens=species&{query} 301
+}
+# {query.ver} reaches the Location only after the expression proved it is a version
+# id, so a crafted ver= cannot build another path or host.
+@pvq_sc {
+	path_regexp pvq_sc ^/scores(?:/.*)?$
+	expression {query.ver}.matches('^v[0-9]+[a-z]?$')
+}
+handle @pvq_sc {
+	redir * /{query.ver}/atlas/?{query} 301
+}
+@pvq_sp {
+	path_regexp pvq_sp ^/species(?:/.*)?$
+	expression {query.ver}.matches('^v[0-9]+[a-z]?$')
+}
+handle @pvq_sp {
+	redir * /{query.ver}/atlas/?lens=species&{query} 301
+}
+
 # --- the apps: /{ver}/{app}/... -> rstudio:3839 /{app}/...?ver={ver} -------
 # THE VERSION IS THE PATH, AND IT REACHES THE APP AS A HEADER -- not as ?ver=.
 #
@@ -46,7 +103,9 @@ import app_version_routes.caddy rstudio:3839
 # the reviewer to the landing page (the version list) rather than the 404 the
 # landing file_server would answer. The ?ver= spellings above match first.
 @oldapp path /scores /scores/* /species /species/*
-redir @oldapp / 302
+handle @oldapp {
+	redir * / 302
+}
 
 # --- restricted docs: /docs/{ver}/... -> the gh-pages-preview clone ---------
 handle_path /docs/* {
