@@ -38,17 +38,27 @@ while [ "$prev_port" = "$pub_port" ]; do prev_port=$(freeport); done
 export PREVIEW_RESTRICTED_VERSIONS='v7b|v7c|v8|v9'
 export ATLAS_PREVIEW_ROOT="$here/fixtures/atlas_preview"
 
-# --- public: the real app vhost, in a temp dir that symlinks the real snippets ----------
+# --- public: the real vhosts that proxy the public Shiny Server, each lifted out of the
+# Caddyfile into a temp dir that symlinks the real snippets: app.marinesensitivity.org plus
+# shiny.marinesensitivity.org and shiny.oceanmetrics.io (the same :3838 server, so scores and
+# species were reachable there too and must redirect as well) ---------------------------------
 ln -s "$caddydir/atlas_cutover_public.caddy" "$work/atlas_cutover_public.caddy"
 ln -s "$caddydir/app_version_routes.caddy"   "$work/app_version_routes.caddy"
-awk -v port="$pub_port" '
-  /^app\.marinesensitivity\.org \{$/ {print ":" port " {"; inside=1; next}
-  inside && /^\}$/ {print; exit}
-  inside && /^\timport access_log / {next}
-  inside {print}
-' "$caddydir/Caddyfile" > "$work/site.part"
-[ -s "$work/site.part" ] || { echo "could not lift the app.marinesensitivity.org vhost out of the Caddyfile" >&2; exit 1; }
-{ printf '{\n\tauto_https off\n\tadmin off\n}\n'; cat "$work/site.part"; } > "$work/public.Caddyfile"
+lift() { # lift <vhost address> <port> -> a standalone Caddyfile "$work/<address>.Caddyfile"
+  awk -v site="$1" -v port="$2" '
+    $0 == site " {" {print ":" port " {"; inside=1; next}
+    inside && /^\}$/ {print; exit}
+    inside && /^\timport access_log / {next}
+    inside {print}
+  ' "$caddydir/Caddyfile" > "$work/$1.part"
+  [ -s "$work/$1.part" ] || { echo "could not lift the $1 vhost out of the Caddyfile" >&2; exit 1; }
+  { printf '{\n\tauto_https off\n\tadmin off\n}\n'; cat "$work/$1.part"; } > "$work/$1.Caddyfile"
+}
+shiny_port=$(freeport); oceanshiny_port=$(freeport)
+lift app.marinesensitivity.org   "$pub_port"
+lift shiny.marinesensitivity.org "$shiny_port"
+lift shiny.oceanmetrics.io       "$oceanshiny_port"
+cp "$work/app.marinesensitivity.org.Caddyfile" "$work/public.Caddyfile"
 
 # --- preview: the real routes behind a basic_auth stand-in for jwtauth ----------------
 pw=cutover-test-pw
@@ -67,7 +77,9 @@ cat > "$work/preview.Caddyfile" <<EOF
 EOF
 
 echo "validating the adapted configs ..."
-caddy validate --config "$work/public.Caddyfile"  --adapter caddyfile >/dev/null 2>"$work/err" || { cat "$work/err"; exit 1; }
+for site in app.marinesensitivity.org shiny.marinesensitivity.org shiny.oceanmetrics.io; do
+  caddy validate --config "$work/$site.Caddyfile" --adapter caddyfile >/dev/null 2>"$work/err" || { cat "$work/err"; exit 1; }
+done
 caddy validate --config "$work/preview.Caddyfile" --adapter caddyfile >/dev/null 2>"$work/err" || { cat "$work/err"; exit 1; }
 # the real, whole Caddyfile (minus the plugin vhosts) must still adapt too
 bash "$here/caddyfile_adapt_local.sh" | tail -1 | grep -q ADAPT_OK || { echo "caddyfile_adapt_local.sh failed"; exit 1; }
@@ -111,10 +123,12 @@ start() { # start <config> <port> <logname>
   for _ in $(seq 1 40); do lsof -i ":$2" -sTCP:LISTEN >/dev/null 2>&1 && return 0; sleep 0.25; done
   echo "caddy never bound :$2:"; cat "$work/$3.log"; exit 1
 }
-start "$work/public.Caddyfile"  "$pub_port"  public
+start "$work/app.marinesensitivity.org.Caddyfile"   "$pub_port"         public
+start "$work/shiny.marinesensitivity.org.Caddyfile" "$shiny_port"       shiny
+start "$work/shiny.oceanmetrics.io.Caddyfile"       "$oceanshiny_port"  oceanshiny
 start "$work/preview.Caddyfile" "$prev_port" preview
 
-echo "redirect matrix (public :$pub_port, preview :$prev_port)"
-python3 "$here/atlas_cutover_matrix.py" "$pub_port" "$prev_port" "reviewer:$pw" || fails=$((fails+1))
+echo "redirect matrix (app :$pub_port, shiny.ms :$shiny_port, shiny.om :$oceanshiny_port, preview :$prev_port)"
+python3 "$here/atlas_cutover_matrix.py" "$pub_port" "$prev_port" "reviewer:$pw" "$shiny_port" "$oceanshiny_port" || fails=$((fails+1))
 
 if [ "$fails" -eq 0 ]; then echo "ATLAS_CUTOVER_LOCAL_OK"; else echo "ATLAS_CUTOVER_LOCAL_FAILED ($fails)"; exit 1; fi

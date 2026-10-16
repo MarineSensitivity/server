@@ -4,8 +4,11 @@
 # Imported by the app.marinesensitivity.org vhost in the Caddyfile, BEFORE
 # app_version_routes.caddy (whose proxy to the Shiny worker is now unreachable
 # for every shape below; it stays until B3 so reverting this commit is the whole
-# rollback), and by nothing else. caddy/test/atlas_cutover_local.sh exercises the
-# real vhost, this file included.
+# rollback), and by the two other vhosts that proxy the SAME public Shiny Server
+# (:3838, /share/shiny_apps): shiny.marinesensitivity.org and shiny.oceanmetrics.io,
+# where /scores/ and /species/ would otherwise bypass the cutover. Only the shapes
+# below match; any other app on those hosts proxies as before. caddy/test/
+# atlas_cutover_local.sh exercises the real vhosts, this file included.
 #
 #   /{v}/scores/...?Q   -> https://marinesensitivity.org/atlas/?ver={v}&Q
 #   /{v}/species/...?Q  -> https://marinesensitivity.org/atlas/?ver={v}&lens=species&Q

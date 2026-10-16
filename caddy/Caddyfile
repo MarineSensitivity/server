@@ -307,6 +307,12 @@ rstudio.marinesensitivity.org {
 shiny.marinesensitivity.org {
 	import access_log shiny
 
+	# the SAME public Shiny Server (:3838, /share/shiny_apps) as app.*, so scores and
+	# species were reachable here too: the Atlas cutover (B2) redirects them from this host
+	# as well, or /scores/ and /species/ would bypass it. Only the scores/species shapes
+	# (and the retired aliases) match; every other app on this host proxies as before.
+	import atlas_cutover_public.caddy
+
 	reverse_proxy rstudio:3838
 }
 
@@ -426,6 +432,9 @@ preview.marinesensitivity.org {
 
 shiny.oceanmetrics.io {
 	import access_log shiny-oceanmetrics
+
+	# same Shiny Server as app.* / shiny.marinesensitivity.org: see the Atlas cutover note there
+	import atlas_cutover_public.caddy
 
 	reverse_proxy rstudio:3838
 }
