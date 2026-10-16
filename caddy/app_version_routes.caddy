@@ -35,9 +35,9 @@ handle @vapp {
 # ATLAS CUTOVER B2 (2026-10-16): everything above is now UNREACHABLE on both hosts.
 # Each host's cutover rules run first and are terminal -- atlas_cutover_public.caddy
 # on the public host, the `handle` redirects at the top of preview_routes.caddy on the
-# preview host -- and 301 /{ver}/scores|species/... (and the unversioned spellings,
+# preview host -- and 302 /{ver}/scores|species/... (and the unversioned spellings,
 # with or without ?ver=) into the Atlas. The proxy stays until B3 (60 quiet days) so
-# that the rollback is reverting one commit; the pre-path `?ver=` redirects that used
+# that a rollback is a revert of the B2 merges (server AND workflows) plus DEPLOY_CADDY=1; the pre-path `?ver=` redirects that used
 # to end this file are superseded by those rules (they dropped the rest of the query,
 # and `/{query.ver}{path}` built a path from an unchecked client value). The remaining
 # redirect is wrapped in `handle`: a bare `redir` sorts ahead of `authentication`

@@ -171,6 +171,16 @@ req "/atlas?ver=v9"
   && ok "/atlas?ver=v9 -> 301 /v9/atlas/ (noslash)" \
   || bad "query->path redirect (noslash)" "code=$CODE loc=$LOC"
 
+# an unbounded ver= was an open redirect: /atlas/?ver=//evil.com -> Location ///evil.com/atlas/
+for evil in "//evil.com" "/../evil" "v9x9" "V9" "%2F%2Fevil.com"; do
+  for p in "/atlas/?ver=$evil" "/atlas?ver=$evil"; do
+    req "$p"
+    { [ "$CODE" != 301 ] && [ "$CODE" != 302 ] && ! echo "$LOC" | grep -qi evil; } \
+      && ok "$p -> not a redirect (code=$CODE): ver is bounded to a version id" \
+      || bad "open redirect: $p" "code=$CODE loc=$LOC"
+  done
+done
+
 req "/atlas/"
 refused "$CODE" && ! grep -q FIXTURE "$body" && ok "/atlas/ (no ver, no version) -> not served (code=$CODE)" || bad "/atlas/ (bare)" "code=$CODE"
 

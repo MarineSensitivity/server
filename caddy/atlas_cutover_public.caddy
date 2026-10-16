@@ -1,10 +1,9 @@
 # atlas_cutover_public.caddy -- B2 of the Atlas cutover (2026-10-16): every Shiny
-# URL of the PUBLIC app host 301s into the static Atlas, query carried verbatim.
+# URL of the PUBLIC app host 302s into the static Atlas, query carried verbatim.
 #
 # Imported by the app.marinesensitivity.org vhost in the Caddyfile, BEFORE
 # app_version_routes.caddy (whose proxy to the Shiny worker is now unreachable
-# for every shape below; it stays until B3 so reverting this commit is the whole
-# rollback), and by the two other vhosts that proxy the SAME public Shiny Server
+# for every shape below; it stays until B3 so a rollback is a revert, see below), and by the two other vhosts that proxy the SAME public Shiny Server
 # (:3838, /share/shiny_apps): shiny.marinesensitivity.org and shiny.oceanmetrics.io,
 # where /scores/ and /species/ would otherwise bypass the cutover. Only the shapes
 # below match; any other app on those hosts proxies as before. caddy/test/
@@ -14,15 +13,21 @@
 #   /{v}/species/...?Q  -> https://marinesensitivity.org/atlas/?ver={v}&lens=species&Q
 #   /scores/?Q          -> https://marinesensitivity.org/atlas/?Q
 #   /species/?Q         -> https://marinesensitivity.org/atlas/?lens=species&Q
+#   /species/?mdl_seq=N (no ver) -> .../atlas/?ver=v7&lens=species&mdl_seq=N   (v1-v7b id)
 #   /mapgl /mapsp /mapgl_v{n} /mapsp_v{n} /scores_v{n} /species_v{n}   (the retired
 #       aliases) -> the same Atlas URL in ONE hop, not via /v{n}/scores/
 #
 # A RESTRICTED version (PREVIEW_RESTRICTED_VERSIONS, a regex alternation such as
 # "v7b|v7c|v8|v9", from the server .env; DEPLOY_CADDY asserts it against
-# versions.json) goes straight to the PREVIEW Atlas, https://preview.marinesensitivity.org/
-# {v}/atlas/ -- one hop, and a 302 rather than a 301 because a version stops being
-# restricted when it is released and a cached 301 would keep sending visitors to
-# the review host. Public destinations are 301: the apps are not coming back.
+# versions.json BEFORE it restarts anything) goes straight to the PREVIEW Atlas,
+# https://preview.marinesensitivity.org/{v}/atlas/ -- one hop. If the variable is
+# unset, restricted versions match nothing here and land on the PUBLIC Atlas, which
+# fails closed ("Version v8 is under review") but is the wrong door.
+#
+# EVERY redirect is a 302 until B3, deliberately: browsers cache a 301 indefinitely,
+# so a rollback (revert the server merge AND the workflows merge, then DEPLOY_CADDY=1)
+# would never reach anyone who had already followed one. B3 (after 60 quiet days,
+# when the Shiny blocks go) flips the public destinations to 301.
 #
 # THE QUERY IS THE POINT (MarineSensitivity/apps#6). A redir target carrying its
 # own query REPLACES the incoming one, so every rule appends {query}. The Atlas
@@ -42,7 +47,8 @@
 # The `redir` 1st argument below is always a NAMED MATCHER: a `to` beginning with
 # "/" would otherwise be read as an inline path matcher (see atlas_preview_routes.caddy).
 # The expression matchers use Caddy's CEL placeholders: {query} is the RAW query
-# string (percent-encoding intact), {query.ver} the first `ver` value.
+# string (percent-encoding intact); {query.ver} the `ver` value(s) -- a repeated key is
+# COMMA-JOINED ("?ver=v8&ver=v7" -> "v8,v7"), see section 3.
 
 # --- 1. a RESTRICTED version asked for by path -> the preview Atlas -------------
 @rsc_n {
@@ -77,38 +83,42 @@ redir @rat https://preview.marinesensitivity.org{uri} 302
 	path_regexp vsc ^/(v[0-9]+[a-z]?)/scores(?:/.*)?$
 	expression {query} == ""
 }
-redir @vsc_n https://marinesensitivity.org/atlas/?ver={re.vsc.1} 301
+redir @vsc_n https://marinesensitivity.org/atlas/?ver={re.vsc.1} 302
 @vsc_q {
 	path_regexp vsc ^/(v[0-9]+[a-z]?)/scores(?:/.*)?$
 	expression {query} != ""
 }
-redir @vsc_q https://marinesensitivity.org/atlas/?ver={re.vsc.1}&{query} 301
+redir @vsc_q https://marinesensitivity.org/atlas/?ver={re.vsc.1}&{query} 302
 
 @vsp_n {
 	path_regexp vsp ^/(v[0-9]+[a-z]?)/species(?:/.*)?$
 	expression {query} == ""
 }
-redir @vsp_n https://marinesensitivity.org/atlas/?ver={re.vsp.1}&lens=species 301
+redir @vsp_n https://marinesensitivity.org/atlas/?ver={re.vsp.1}&lens=species 302
 @vsp_q {
 	path_regexp vsp ^/(v[0-9]+[a-z]?)/species(?:/.*)?$
 	expression {query} != ""
 }
-redir @vsp_q https://marinesensitivity.org/atlas/?ver={re.vsp.1}&lens=species&{query} 301
+redir @vsp_q https://marinesensitivity.org/atlas/?ver={re.vsp.1}&lens=species&{query} 302
 
 @vat_n {
 	path_regexp vat ^/(v[0-9]+[a-z]?)/atlas(?:/.*)?$
 	expression {query} == ""
 }
-redir @vat_n https://marinesensitivity.org/atlas/?ver={re.vat.1} 301
+redir @vat_n https://marinesensitivity.org/atlas/?ver={re.vat.1} 302
 @vat_q {
 	path_regexp vat ^/(v[0-9]+[a-z]?)/atlas(?:/.*)?$
 	expression {query} != ""
 }
-redir @vat_q https://marinesensitivity.org/atlas/?ver={re.vat.1}&{query} 301
+redir @vat_q https://marinesensitivity.org/atlas/?ver={re.vat.1}&{query} 302
 
 # --- 3. the UNVERSIONED spelling with a restricted ?ver= -> the preview Atlas ---
 # {query.ver} is only ever used in the Location after the expression proved it is
-# one of the restricted versions, so a crafted ver= cannot steer the redirect.
+# EXACTLY one of the restricted versions, so a crafted ver= cannot steer the redirect.
+# A repeated key arrives COMMA-JOINED ("?ver=v8&ver=v7" -> "v8,v7"), which the exact
+# rule does not match and which must not fall through to the public Atlas as its first
+# ver (v8 would be named there): any list that CONTAINS a restricted id goes to the
+# preview host's landing page, which lists the restricted releases.
 @uvr_sc {
 	path_regexp uvr_sc ^/scores(?:/.*)?$
 	expression {query.ver}.matches('^(?:{$PREVIEW_RESTRICTED_VERSIONS:__none__})$')
@@ -119,29 +129,44 @@ redir @uvr_sc https://preview.marinesensitivity.org/{query.ver}/atlas/?{query} 3
 	expression {query.ver}.matches('^(?:{$PREVIEW_RESTRICTED_VERSIONS:__none__})$')
 }
 redir @uvr_sp https://preview.marinesensitivity.org/{query.ver}/atlas/?lens=species&{query} 302
+@uvr_multi {
+	path_regexp uvr_multi ^/(?:scores|species)(?:/.*)?$
+	expression {query.ver}.matches('(?:^|,)(?:{$PREVIEW_RESTRICTED_VERSIONS:__none__})(?:,|$)')
+}
+redir @uvr_multi https://preview.marinesensitivity.org/ 302
+
+# --- 3b. /species/ with a legacy mdl_seq and NO ver -> release v7 ------------------
+# mdl_seq is the v1-v7b model id and the app used to default the version to the
+# promoted release (v7); the Atlas resolves an absent ver to the promoted release, which
+# will not stay v7, so the old link pins the release its id belongs to.
+@usp_seq {
+	path_regexp usp_seq ^/species(?:/.*)?$
+	expression {query.mdl_seq} != "" && {query.ver} == ""
+}
+redir @usp_seq https://marinesensitivity.org/atlas/?ver=v7&lens=species&{query} 302
 
 # --- 4. the UNVERSIONED spelling -> the public Atlas (it resolves ?ver= itself) --
 @usc_n {
 	path_regexp usc ^/scores(?:/.*)?$
 	expression {query} == ""
 }
-redir @usc_n https://marinesensitivity.org/atlas/ 301
+redir @usc_n https://marinesensitivity.org/atlas/ 302
 @usc_q {
 	path_regexp usc ^/scores(?:/.*)?$
 	expression {query} != ""
 }
-redir @usc_q https://marinesensitivity.org/atlas/?{query} 301
+redir @usc_q https://marinesensitivity.org/atlas/?{query} 302
 
 @usp_n {
 	path_regexp usp ^/species(?:/.*)?$
 	expression {query} == ""
 }
-redir @usp_n https://marinesensitivity.org/atlas/?lens=species 301
+redir @usp_n https://marinesensitivity.org/atlas/?lens=species 302
 @usp_q {
 	path_regexp usp ^/species(?:/.*)?$
 	expression {query} != ""
 }
-redir @usp_q https://marinesensitivity.org/atlas/?lens=species&{query} 301
+redir @usp_q https://marinesensitivity.org/atlas/?lens=species&{query} 302
 
 # --- 5. the retired aliases, straight to the Atlas ------------------------------
 # mapgl_v{n} / scores_v{n} were the scores app of release v{n}; mapsp_v{n} /
@@ -173,23 +198,23 @@ redir @asp_r_q https://preview.marinesensitivity.org/{re.asp_r.1}/atlas/?lens=sp
 	path_regexp asc ^/(?:mapgl|scores)_(v[0-9]+[a-z]?)(?:/.*)?$
 	expression {query} == ""
 }
-redir @asc_n https://marinesensitivity.org/atlas/?ver={re.asc.1} 301
+redir @asc_n https://marinesensitivity.org/atlas/?ver={re.asc.1} 302
 @asc_q {
 	path_regexp asc ^/(?:mapgl|scores)_(v[0-9]+[a-z]?)(?:/.*)?$
 	expression {query} != ""
 }
-redir @asc_q https://marinesensitivity.org/atlas/?ver={re.asc.1}&{query} 301
+redir @asc_q https://marinesensitivity.org/atlas/?ver={re.asc.1}&{query} 302
 
 @asp_n {
 	path_regexp asp ^/(?:mapsp|species)_(v[0-9]+[a-z]?)(?:/.*)?$
 	expression {query} == ""
 }
-redir @asp_n https://marinesensitivity.org/atlas/?ver={re.asp.1}&lens=species 301
+redir @asp_n https://marinesensitivity.org/atlas/?ver={re.asp.1}&lens=species 302
 @asp_q {
 	path_regexp asp ^/(?:mapsp|species)_(v[0-9]+[a-z]?)(?:/.*)?$
 	expression {query} != ""
 }
-redir @asp_q https://marinesensitivity.org/atlas/?ver={re.asp.1}&lens=species&{query} 301
+redir @asp_q https://marinesensitivity.org/atlas/?ver={re.asp.1}&lens=species&{query} 302
 
 # the unsuffixed v7 instances: /scores and /species pointed at them, so they carry
 # v7 explicitly (v7 is the promoted release, never restricted)
@@ -197,20 +222,20 @@ redir @asp_q https://marinesensitivity.org/atlas/?ver={re.asp.1}&lens=species&{q
 	path_regexp m7c ^/mapgl(?:/.*)?$
 	expression {query} == ""
 }
-redir @m7c_n https://marinesensitivity.org/atlas/?ver=v7 301
+redir @m7c_n https://marinesensitivity.org/atlas/?ver=v7 302
 @m7c_q {
 	path_regexp m7c ^/mapgl(?:/.*)?$
 	expression {query} != ""
 }
-redir @m7c_q https://marinesensitivity.org/atlas/?ver=v7&{query} 301
+redir @m7c_q https://marinesensitivity.org/atlas/?ver=v7&{query} 302
 
 @m7p_n {
 	path_regexp m7p ^/mapsp(?:/.*)?$
 	expression {query} == ""
 }
-redir @m7p_n https://marinesensitivity.org/atlas/?ver=v7&lens=species 301
+redir @m7p_n https://marinesensitivity.org/atlas/?ver=v7&lens=species 302
 @m7p_q {
 	path_regexp m7p ^/mapsp(?:/.*)?$
 	expression {query} != ""
 }
-redir @m7p_q https://marinesensitivity.org/atlas/?ver=v7&lens=species&{query} 301
+redir @m7p_q https://marinesensitivity.org/atlas/?ver=v7&lens=species&{query} 302

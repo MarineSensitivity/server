@@ -20,9 +20,12 @@ services:
       # vhost 302s /{ver}/scores|species|atlas (and the retired aliases / ?ver=
       # spellings) for these straight to the review host's Atlas, ONE hop (Atlas
       # cutover B2, caddy/atlas_cutover_public.caddy), instead of the public Atlas.
-      # Kept in the server .env beside PREVIEW_REVIEWERS_<VER>; DEPLOY_CADDY
-      # asserts it against versions.json. Unset, nothing matches and the old
-      # fallback behaviour stands.
+      # Kept in the server .env beside PREVIEW_REVIEWERS_<VER>; DEPLOY_CADDY asserts
+      # it against versions.json BEFORE it restarts anything. UNSET (or empty) it
+      # defaults to the no-match value `__none__`, and then restricted versions are
+      # sent to the PUBLIC Atlas instead of the review host: that fails closed (the
+      # app says "under review") but is the wrong door, and the deploy check refuses
+      # it. Use `__none__` explicitly only while no release is restricted.
       PREVIEW_RESTRICTED_VERSIONS: ${PREVIEW_RESTRICTED_VERSIONS:-__none__}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile

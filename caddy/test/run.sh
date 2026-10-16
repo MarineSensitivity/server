@@ -8,7 +8,7 @@
 # username ggicci) so the routes can be exercised without Cloudflare. It joins
 # the compose network, so the preview Shiny instance (rstudio:3839) is reachable --
 # and, since the Atlas cutover (B2, 2026-10-16), asserted to be NEVER reached:
-# every /{ver}/scores|species/ and ?ver= spelling answers a 301 into the Atlas
+# every /{ver}/scores|species/ and ?ver= spelling answers a 302 into the Atlas
 # of the same version with the query intact. Every assertion is one a broken
 # routing would fail: 401 without a token (the redirects included -- none may
 # answer before jwtauth); the 301 and its exact Location; an unversioned or
@@ -65,11 +65,11 @@ req "/$ver/species/?mdl_key=abc";               [ "$CODE" = 401 ] && ok "species
 req "/scores/?ver=$ver";                        [ "$CODE" = 401 ] && ok "pre-path ?ver= redirect without a token -> 401" || bad "?ver= no token" "$CODE"
 req "/$ver/scores";                             [ "$CODE" = 401 ] && ok "no-slash redirect without a token -> 401" || bad "noslash no token" "$CODE"
 
-# --- the cutover: every Shiny URL is a 301 into the Atlas, query intact, and is
+# --- the cutover: every Shiny URL is a 302 (until B3) into the Atlas, query intact, and is
 # never proxied (a 200 here would be the Shiny app answering) ------------------------
 want() { # want <label> <path> <relative Location>
   req "$2" "${auth[@]}"
-  if [ "$CODE" = 301 ] && [ "$LOC" = "http://$name:8080$3" ]; then ok "$1: $2 -> 301 $3"; else bad "$1: $2" "code=$CODE loc=$LOC (want 301 $3)"; fi
+  if [ "$CODE" = 302 ] && [ "$LOC" = "http://$name:8080$3" ]; then ok "$1: $2 -> 302 $3"; else bad "$1: $2" "code=$CODE loc=$LOC (want 302 $3)"; fi
 }
 want "scores"                "/$ver/scores/"                               "/$ver/atlas/"
 want "scores, no slash"      "/$ver/scores"                                "/$ver/atlas/"
@@ -89,6 +89,11 @@ want "pre-path, no slash"    "/species?ver=$ver&mdl_seq=1"                 "/$ve
 for bad_ver in "junk" "//evil.example" "/../evil"; do
   req "/scores/?ver=$bad_ver" "${auth[@]}"
   [ "$CODE" = 302 ] && [ "$LOC" = "http://$name:8080/" ] && ok "/scores/?ver=$bad_ver -> 302 / (not a redirect target)" || bad "crafted ver=$bad_ver" "code=$CODE loc=$LOC"
+done
+
+for bad_ver in "//evil.example" "/../evil"; do
+  req "/atlas/?ver=$bad_ver" "${auth[@]}"
+  { [ "$CODE" != 301 ] && [ "$CODE" != 302 ] && [ -z "$(echo "$LOC" | grep -i evil)" ]; } && ok "/atlas/?ver=$bad_ver is not an open redirect (code=$CODE)" || bad "atlas ?ver=$bad_ver" "code=$CODE loc=$LOC"
 done
 
 req "/scores/" "${auth[@]}"

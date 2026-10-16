@@ -21,13 +21,14 @@
 header X-Robots-Tag "noindex, nofollow"
 
 # --- ATLAS CUTOVER B2 (2026-10-16): the Shiny apps are replaced by the Atlas ----
-# Every Shiny URL of this host 301s to the Atlas of the SAME version, query carried
+# Every Shiny URL of this host 302s to the Atlas of the SAME version, query carried
 # verbatim (the Atlas rewrites legacy mdl_key / mdl_seq -> sp itself):
 #   /{v}/scores/...?Q   -> /{v}/atlas/?Q
 #   /{v}/species/...?Q  -> /{v}/atlas/?lens=species&Q
 #   /scores|species/?ver={v}&Q (the pre-path spelling) -> the same, `ver` left in Q
 #                          (inert: on this host the version is the PATH)
-# One hop; each rule is a PAIR (empty query / non-empty query) so no Location ends in
+# 302, not 301, until B3 (a cached 301 would outlive a rollback: revert the B2 server
+# merge AND the workflows merge, then DEPLOY_CADDY=1). One hop; each rule is a PAIR (empty query / non-empty query) so no Location ends in
 # a dangling "?" or "&". Every redirect is wrapped in `handle`: a bare `redir` sorts
 # AHEAD of jwtauth and would answer an unauthenticated request, and `handle`s keep the
 # written order, so these run before the (now unreachable) Shiny proxy below. The
@@ -37,28 +38,28 @@ header X-Robots-Tag "noindex, nofollow"
 	expression {query} == ""
 }
 handle @pvsc_n {
-	redir * /{re.pvsc.1}/atlas/ 301
+	redir * /{re.pvsc.1}/atlas/ 302
 }
 @pvsc_q {
 	path_regexp pvsc ^/(v[0-9]+[a-z]?)/scores(?:/.*)?$
 	expression {query} != ""
 }
 handle @pvsc_q {
-	redir * /{re.pvsc.1}/atlas/?{query} 301
+	redir * /{re.pvsc.1}/atlas/?{query} 302
 }
 @pvsp_n {
 	path_regexp pvsp ^/(v[0-9]+[a-z]?)/species(?:/.*)?$
 	expression {query} == ""
 }
 handle @pvsp_n {
-	redir * /{re.pvsp.1}/atlas/?lens=species 301
+	redir * /{re.pvsp.1}/atlas/?lens=species 302
 }
 @pvsp_q {
 	path_regexp pvsp ^/(v[0-9]+[a-z]?)/species(?:/.*)?$
 	expression {query} != ""
 }
 handle @pvsp_q {
-	redir * /{re.pvsp.1}/atlas/?lens=species&{query} 301
+	redir * /{re.pvsp.1}/atlas/?lens=species&{query} 302
 }
 # {query.ver} reaches the Location only after the expression proved it is a version
 # id, so a crafted ver= cannot build another path or host.
@@ -67,14 +68,14 @@ handle @pvsp_q {
 	expression {query.ver}.matches('^v[0-9]+[a-z]?$')
 }
 handle @pvq_sc {
-	redir * /{query.ver}/atlas/?{query} 301
+	redir * /{query.ver}/atlas/?{query} 302
 }
 @pvq_sp {
 	path_regexp pvq_sp ^/species(?:/.*)?$
 	expression {query.ver}.matches('^v[0-9]+[a-z]?$')
 }
 handle @pvq_sp {
-	redir * /{query.ver}/atlas/?lens=species&{query} 301
+	redir * /{query.ver}/atlas/?lens=species&{query} 302
 }
 
 # --- the apps: /{ver}/{app}/... -> rstudio:3839 /{app}/...?ver={ver} -------

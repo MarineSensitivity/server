@@ -325,18 +325,29 @@ app.marinesensitivity.org {
 	# replaced by the static Atlas (https://marinesensitivity.org/atlas/), and
 	# every Shiny URL -- /{ver}/scores|species/, the unversioned /scores/ and
 	# /species/ (+ ?ver=), and the retired /mapgl /mapsp /mapgl_v{n} /mapsp_v{n}
-	# /scores_v{n} /species_v{n} aliases -- 301s into it with the query carried
+	# /scores_v{n} /species_v{n} aliases -- 302s into it with the query carried
 	# verbatim (the Atlas rewrites mdl_key / mdl_seq itself). A RESTRICTED version
 	# (PREVIEW_RESTRICTED_VERSIONS: a regex alternation such as "v8|v9" from the
 	# server .env -- the same manual step as PREVIEW_REVIEWERS_<VER> and
-	# CF_ACCESS_AUD, asserted against versions.json by DEPLOY_CADDY) goes straight
-	# to https://preview.marinesensitivity.org/{ver}/atlas/ with a 302. Unset, it
-	# matches nothing. The rules, their order and why live in
-	# atlas_cutover_public.caddy, which caddy/test/atlas_cutover_local.sh proves.
+	# CF_ACCESS_AUD, asserted against versions.json by DEPLOY_CADDY before it
+	# restarts anything) goes straight to https://preview.marinesensitivity.org/
+	# {ver}/atlas/. If it is UNSET it matches nothing, so restricted versions land
+	# on the PUBLIC Atlas: that fails closed ("under review"), but it is the wrong
+	# door and the deploy check exists to catch it. All 302 until B3 flips the
+	# public ones to 301: a cached 301 would outlive a rollback. The rules, their
+	# order and why live in atlas_cutover_public.caddy, which
+	# caddy/test/atlas_cutover_local.sh proves.
 	#
 	# Before B2 this block held the `&{query}` aliases and the restricted-version
 	# 302 (MarineSensitivity/apps#6: a redir target carrying its own query REPLACES
-	# the incoming one). Rolling back = reverting the B2 commit + DEPLOY_CADDY=1.
+	# the incoming one). Rolling back = revert the B2 server merge AND the
+	# workflows merge (its DEPLOY_CADDY assertions expect the redirects), then
+	# DEPLOY_CADDY=1.
+	#
+	# The bare host root has nothing to show any more: send it to the Atlas.
+	# (shiny.* roots are left alone: they list that Shiny Server's other apps.)
+	redir / https://marinesensitivity.org/atlas/ 302
+
 	import atlas_cutover_public.caddy
 
 	# THE VERSION IS THE PATH here too (2026-08-27). One definition, shared with
