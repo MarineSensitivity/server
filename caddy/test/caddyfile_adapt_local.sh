@@ -26,6 +26,8 @@ awk '
   > "$tmp/Caddyfile"
 mkdir -p "$tmp/share/logs/caddy"
 cp "$here/../app_version_routes.caddy" "$tmp/"   # relative import, plain directives only
+# the cutover redirects live in a snippet now, and so does the restricted-versions placeholder
+sed -e 's/{\$PREVIEW_RESTRICTED_VERSIONS:__none__}/v8|v9/g' "$here/../atlas_cutover_public.caddy" > "$tmp/atlas_cutover_public.caddy"
 caddy adapt --config "$tmp/Caddyfile" --adapter caddyfile --validate >"$tmp/out.json" 2>"$tmp/err" \
   || { cat "$tmp/err"; echo "ADAPT_FAILED"; exit 1; }
 echo "  ok   adapts + validates ($(grep -o '"host"' "$tmp/out.json" | wc -l | tr -d ' ') host matchers; preview/pmtiles/erddap stripped)"

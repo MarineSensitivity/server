@@ -17,12 +17,15 @@ services:
       CF_ACCESS_TEAM: ${CF_ACCESS_TEAM:-unconfigured}
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-unconfigured}
       # the restricted releases, as a regex alternation ("v8|v9"): the PUBLIC app
-      # vhost 302s /{ver}/scores|species|atlas for these to the review host
-      # instead of silently rendering the promoted release (or, for atlas, a
-      # bare 404 -- this host has no other route for /{ver}/atlas/ at all).
-      # Kept in the server .env beside PREVIEW_REVIEWERS_<VER>; DEPLOY_CADDY
-      # asserts it against versions.json. Unset, nothing matches and the old
-      # fallback behaviour stands.
+      # vhost 302s /{ver}/scores|species|atlas (and the retired aliases / ?ver=
+      # spellings) for these straight to the review host's Atlas, ONE hop (Atlas
+      # cutover B2, caddy/atlas_cutover_public.caddy), instead of the public Atlas.
+      # Kept in the server .env beside PREVIEW_REVIEWERS_<VER>; DEPLOY_CADDY asserts
+      # it against versions.json BEFORE it restarts anything. UNSET (or empty) it
+      # defaults to the no-match value `__none__`, and then restricted versions are
+      # sent to the PUBLIC Atlas instead of the review host: that fails closed (the
+      # app says "under review") but is the wrong door, and the deploy check refuses
+      # it. Use `__none__` explicitly only while no release is restricted.
       PREVIEW_RESTRICTED_VERSIONS: ${PREVIEW_RESTRICTED_VERSIONS:-__none__}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile
@@ -32,6 +35,10 @@ services:
       - ./caddy/preview_routes.caddy:/etc/caddy/preview_routes.caddy
       # the version-path routes, shared by BOTH app vhosts (see the Caddyfile)
       - ./caddy/app_version_routes.caddy:/etc/caddy/app_version_routes.caddy
+      # the PUBLIC app host's Atlas cutover redirects (B2, 2026-10-16), imported by
+      # the app.marinesensitivity.org vhost (single-file bind mount, same restart
+      # rule). A NEW mount: `up -d --no-deps caddy` recreates the container for it.
+      - ./caddy/atlas_cutover_public.caddy:/etc/caddy/atlas_cutover_public.caddy
       # the atlas app's routes on the preview host, imported from
       # preview_routes.caddy (single-file bind mount, same restart rule)
       - ./caddy/atlas_preview_routes.caddy:/etc/caddy/atlas_preview_routes.caddy

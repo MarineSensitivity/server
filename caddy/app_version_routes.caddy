@@ -1,6 +1,7 @@
 # app_version_routes.caddy — THE VERSION IS THE PATH: /{ver}/scores/, /{ver}/species/.
 #
-# Imported by BOTH app vhosts, so the two cannot drift:
+# Imported by BOTH app vhosts, so the two cannot drift (unreachable since the
+# Atlas cutover B2 -- see the end of this file):
 #   app.marinesensitivity.org      import app_version_routes.caddy rstudio:3838
 #   preview.marinesensitivity.org  import app_version_routes.caddy rstudio:3839
 # {args[0]} is the upstream.
@@ -18,7 +19,9 @@
 # no badge. Both headers are SET, never appended, so a client cannot supply them.
 
 @vapp_noslash path_regexp vns ^/(v[0-9]+[a-z]?)/(scores|species)$
-redir @vapp_noslash {path}/?{query} 308
+handle @vapp_noslash {
+	redir * {path}/?{query} 308
+}
 
 @vapp path_regexp vapp ^/(v[0-9]+[a-z]?)/(scores|species)(/.*)$
 handle @vapp {
@@ -29,17 +32,13 @@ handle @vapp {
 	}
 }
 
-# The pre-path spelling, kept working: every published deep link, report and
-# bookmark still says /scores/?ver=v7. 301 it to the canonical path, carrying the
-# REST of the query (`&{query}` would re-append ver, so the app would see it
-# twice; the version is already in the path and X-MS-Version wins anyway).
-@vquery_slash {
-	path /scores/ /species/
-	query ver=*
-}
-redir @vquery_slash /{query.ver}{path} 301
-@vquery_noslash {
-	path /scores /species
-	query ver=*
-}
-redir @vquery_noslash /{query.ver}{path}/ 301
+# ATLAS CUTOVER B2 (2026-10-16): everything above is now UNREACHABLE on both hosts.
+# Each host's cutover rules run first and are terminal -- atlas_cutover_public.caddy
+# on the public host, the `handle` redirects at the top of preview_routes.caddy on the
+# preview host -- and 302 /{ver}/scores|species/... (and the unversioned spellings,
+# with or without ?ver=) into the Atlas. The proxy stays until B3 (60 quiet days) so
+# that a rollback is a revert of the B2 merges (server AND workflows) plus DEPLOY_CADDY=1; the pre-path `?ver=` redirects that used
+# to end this file are superseded by those rules (they dropped the rest of the query,
+# and `/{query.ver}{path}` built a path from an unchecked client value). The remaining
+# redirect is wrapped in `handle`: a bare `redir` sorts ahead of `authentication`
+# (jwtauth) on the preview host and would answer an unauthenticated request.
