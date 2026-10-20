@@ -199,6 +199,8 @@ Disallow: /
 # provider.
 # storage.oceanmetrics.io is the same bucket under the Ocean Metrics brand (the
 # gazetteer/ prefix is published there first; marine-atlas/ keeps its old links).
+# indicators/ (2026-10-20): the oceanmetrics/indicators catalog (values, manifest,
+# coverage), published daily by that repo's catalog.yml on the macmini runner.
 storage.marinesensitivity.org, storage.oceanmetrics.io {
 	encode zstd gzip
 
@@ -226,7 +228,7 @@ Disallow: /*.zip$
 	# multi-GB database dump -- which is technically public but must not be
 	# advertised or reachable here, even by exact path. This allow-list is the
 	# server-side half of the restriction the index generator applies.
-	@atlas path_regexp atlas ^/(marine-atlas|gazetteer)(/|$)
+	@atlas path_regexp atlas ^/(marine-atlas|gazetteer|indicators)(/|$)
 	handle @atlas {
 		# CORS preflight, answered here (a redirect on OPTIONS fails the preflight).
 		# Suffix ranges (bytes=-N, how Parquet readers fetch the footer) and
@@ -273,7 +275,7 @@ Disallow: /*.zip$
 		header Content-Type "text/plain; charset=utf-8"
 		respond `Not found.
 
-Browsable: /marine-atlas/ and /gazetteer/
+Browsable: /marine-atlas/, /gazetteer/ and /indicators/
 Start here: https://storage.marinesensitivity.org/marine-atlas/
 ` 404
 	}

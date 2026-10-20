@@ -64,6 +64,10 @@ is "Range request Location unchanged"       "$S3/marine-atlas/latest.txt" "$(loc
 is "redirect carries no body bytes"         0   "$(curl -s -H 'Range: bytes=0-4' "$base/marine-atlas/latest.txt" | wc -c | tr -d ' ')"
 is "query string survives the redirect"     "$S3/marine-atlas/latest.txt?a=1&b=two" "$(loc "$base/marine-atlas/latest.txt?a=1&b=two")"
 is "gazetteer data object -> 302"           "$S3/gazetteer/x/y.parquet" "$(loc "$base/gazetteer/x/y.parquet")"
+# indicators/ (2026-10-20): the third published prefix, same rules as gazetteer/
+is "indicators data object -> 302"          "$S3/indicators/indicators.json" "$(loc "$base/indicators/indicators.json")"
+is "indicators values parquet -> 302"       302 "$(code "$base/indicators/values/indicator=x/coll=y/data.parquet")"
+is "indicators README is proxied"           200 "$(code "$base/indicators/README.md")"
 is "deep parquet object -> 302 (not proxied)" 302 "$(code "$base/marine-atlas/v8/tables/zone.parquet")"
 is "/ -> /marine-atlas/"                    "$base/marine-atlas/" "$(loc "$base/")"
 is "/ is a 302"                             302 "$(code "$base/")"
@@ -92,6 +96,7 @@ is "OPTIONS allows the Range header"         1 "$(has '^access-control-allow-hea
 is "OPTIONS allows If-Match, If-None-Match"  1 "$(has '^access-control-allow-headers:.*if-match.*if-none-match' "$h")"
 is "OPTIONS has Max-Age"                     1 "$(has '^access-control-max-age: 3600$' "$h")"
 is "OPTIONS is not redirected"               "" "$(loc -X OPTIONS -H "$ORI" "$base/gazetteer/places/places.pmtiles")"
+is "OPTIONS on indicators -> 204"           204 "$(code -X OPTIONS -H "$ORI" "$base/indicators/coverage.parquet")"
 is "OPTIONS on marine-atlas -> 204"          204 "$(code -X OPTIONS -H "$ORI" "$base/marine-atlas/latest.txt")"
 is "OPTIONS on /backups/ stays 404"          404 "$(code -X OPTIONS -H "$ORI" "$base/backups/x")"
 # the folder / page proxies are unchanged: still proxied (200), not the redirect's headers
