@@ -1,4 +1,7 @@
-FROM ghcr.io/developmentseed/titiler:latest
+# PINNED (2026-11-05): `:latest` moved to titiler 2.4.0, a /opt/venv image with no `pip` on PATH, and the
+# v10 RELEASE_DEPLOY rebuild died at `pip install` (exit 127) while the live containers were still the
+# 2.2.1 build. Bump deliberately, with the pip/venv line below adjusted to the new image.
+FROM ghcr.io/developmentseed/titiler:2.2.1
 
 # custom-factory deps
 COPY requirements.txt /tmp/msens-requirements.txt
