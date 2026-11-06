@@ -4,10 +4,9 @@ A self-hosted [EcoTaxa](https://github.com/ecotaxa) instance stood up on 2026-11
 the US EcoTaxa call (NOAA/IOOS). Everything here is the upstream `ecotaxa_front/docker/all_in_one` route,
 adapted to live beside the production stack on msens1.
 
-- **URL:** https://ecotaxa.oceanmetrics.io (works: `*.oceanmetrics.io` is a wildcard A to msens1).
-  https://ecotaxa.marinebon.app is the intended name and is in the Caddy block, but `marinebon.app` has
-  **no wildcard and no `ecotaxa` A record** (Google Cloud DNS has only the apex and `shiny`, checked
-  2026-11-06); it starts working, cert included, the moment an A record to 100.25.173.0 is added.
+- **URL:** https://ecotaxa.oceanmetrics.io (`*.oceanmetrics.io` is a wildcard A to msens1). The plan first
+  named ecotaxa.marinebon.app, but `marinebon.app` has no wildcard (Google Cloud DNS has only the apex and
+  `shiny`, checked 2026-11-06); Ben chose the oceanmetrics.io name the same day.
 - **Versions:** `ecotaxa/ecotaxa_front:v3.4.1`, `ecotaxa/ecotaxa_back:v3.4.0` (both released 2026-11-03;
   `latest` is months older), `pgvector/pgvector:pg14`, `nginx:1.21.6`. No GPU back (no GPU on msens1):
   the RandomForest classifier in the back is CPU and works; deep-feature extraction does not.
@@ -19,7 +18,7 @@ adapted to live beside the production stack on msens1.
   Self-registration is **open** (upstream has no switch short of `ACCOUNT_VALIDATION = on`, which needs a
   working mail account).
 - **Networking:** no host ports. The `ecotaxa-nginx` container joins the host Caddy's `server_default`
-  network and the Caddyfile block `ecotaxa.marinebon.app, ecotaxa.oceanmetrics.io` reverse-proxies
+  network and the Caddyfile block `ecotaxa.oceanmetrics.io` reverse-proxies
   `ecotaxa-nginx:80` with a 2 GB body limit (zip imports). Postgres is only reachable on the stack's own
   `econet` network.
 - **Memory caps:** nginx 256 MB, front 1 GB, back 2.5 GB (2 gunicorn workers), Postgres 1.5 GB.
@@ -61,7 +60,7 @@ docker exec ecotaxa-pgdb psql -U postgres -d ecotaxa
 
 ```sh
 docker compose -p ecotaxa --env-file /share/ecotaxa/.env -f ~/server/ecotaxa/docker-compose.yml down
-# remove the `ecotaxa.marinebon.app, ecotaxa.oceanmetrics.io { ... }` block from caddy/Caddyfile (in place), then
+# remove the `ecotaxa.oceanmetrics.io { ... }` block from caddy/Caddyfile (in place), then
 docker exec caddy caddy reload --config /etc/caddy/Caddyfile
 sudo rm -rf /share/ecotaxa          # data + secrets (pgdata is owned by the postgres uid)
 docker rmi ecotaxa/ecotaxa_front:v3.4.1 ecotaxa/ecotaxa_back:v3.4.0 pgvector/pgvector:pg14 nginx:1.21.6
