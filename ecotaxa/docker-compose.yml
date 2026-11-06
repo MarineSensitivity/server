@@ -1,0 +1,74 @@
+# EcoTaxa demo node -- https://ecotaxa.marinebon.app (2026-11-06, for the US EcoTaxa call).
+#
+# Adapted from upstream ecotaxa_front/docker/all_in_one/docker-compose.yml:
+#   - images pinned (front v3.4.1, back v3.4.0, both released 2026-11-03; `latest` is months older)
+#   - no GPU back (msens1 has no GPU; the RandomForest classifier in the back is CPU)
+#   - NO host ports: nginx joins the host Caddy's `server_default` network and the
+#     Caddyfile reverse-proxies `ecotaxa-nginx:80`; Postgres is reachable only on `econet`
+#   - every data dir is a bind mount under /share/ecotaxa (root fs is small)
+#   - memory capped (~4.3 GB total) so production containers are never starved
+#   - secrets come from /share/ecotaxa/.env (chmod 600, never committed); the rendered
+#     back_config.ini / front_config/config.cfg live there too (see render.sh)
+#
+# Run (from the server checkout):
+#   docker compose -p ecotaxa --env-file /share/ecotaxa/.env -f ~/server/ecotaxa/docker-compose.yml up -d
+# Tear down: see README.md
+services:
+  nginx:
+    image: nginx:1.21.6
+    container_name: ecotaxa-nginx
+    restart: unless-stopped
+    volumes:
+      - /share/github/MarineSensitivity/server/ecotaxa/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /share/ecotaxa/vault:/vault:ro
+    networks: [econet, caddy]
+    depends_on: [ecotaxafront, ecotaxaback]
+    mem_limit: 256m
+
+  ecotaxafront:
+    image: ecotaxa/ecotaxa_front:v3.4.1
+    container_name: ecotaxa-front
+    restart: unless-stopped
+    volumes:
+      - /share/ecotaxa/front_config:/app/config
+    networks: [econet]
+    depends_on: [ecotaxaback]
+    mem_limit: 1g
+
+  ecotaxaback:
+    image: ecotaxa/ecotaxa_back:v3.4.0
+    container_name: ecotaxa-back
+    restart: unless-stopped
+    environment:
+      # gunicorn workers (image default 8): 4 vCPU box shared with production
+      WEB_CONCURRENCY: "2"
+    volumes:
+      - /share/ecotaxa/back_config.ini:/config.ini:ro
+      - /share/ecotaxa/ftp_area:/ftp_area
+      - /share/ecotaxa/file_srv:/file_srv
+      - /share/ecotaxa/vault:/vault
+      - /share/ecotaxa/models:/models
+      - /share/ecotaxa/temp_jobs:/temp_jobs
+      - /share/ecotaxa/eco_users_files:/eco_users_files
+    networks: [econet]
+    depends_on: [pgdb]
+    mem_limit: 2500m
+
+  pgdb:
+    image: pgvector/pgvector:pg14
+    container_name: ecotaxa-pgdb
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in /share/ecotaxa/.env}
+    volumes:
+      - /share/ecotaxa/pgdata:/var/lib/postgresql/data
+    networks: [econet]
+    shm_size: 256m
+    mem_limit: 1500m
+
+networks:
+  econet:
+    driver: bridge
+  caddy:
+    name: server_default
+    external: true

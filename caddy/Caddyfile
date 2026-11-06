@@ -537,6 +537,24 @@ pmtiles.marinesensitivity.org {
 	}
 }
 
+# ecotaxa.marinebon.app (2026-11-06): the EcoTaxa demo node for the US EcoTaxa call,
+# a SEPARATE compose stack (server/ecotaxa/, project `ecotaxa`, data in
+# /share/ecotaxa) whose nginx joins `server_default` so `ecotaxa-nginx:80`
+# resolves, like erddap. 2 GB bodies: EcoTaxa imports are zips of images.
+# ecotaxa.oceanmetrics.io works today (*.oceanmetrics.io is a wildcard A to this
+# host). ecotaxa.marinebon.app is the intended name but has NO DNS record yet
+# (marinebon.app in Google Cloud DNS has only the apex and shiny, no wildcard,
+# checked 2026-11-06): Caddy keeps retrying its cert and the name starts working
+# the moment an A record to this host is added.
+ecotaxa.marinebon.app, ecotaxa.oceanmetrics.io {
+	import access_log ecotaxa
+
+	request_body {
+		max_size 2GB
+	}
+	reverse_proxy ecotaxa-nginx:80
+}
+
 # erddap.oceanmetrics.io: the vhost lives in its own repo (oceanmetrics/erddap,
 # checked out under /share/github, which this container mounts); the erddap
 # compose joins this stack's `server_default` network so `erddap:8080` resolves.
