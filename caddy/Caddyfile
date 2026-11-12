@@ -537,6 +537,21 @@ pmtiles.marinesensitivity.org {
 	}
 }
 
+# ecotaxa.oceanmetrics.io (2026-11-06): the EcoTaxa demo node for the US EcoTaxa
+# call, a SEPARATE compose stack (server/ecotaxa/, project `ecotaxa`, data in
+# /share/ecotaxa) whose nginx joins `server_default` so `ecotaxa-nginx:80`
+# resolves, like erddap. 2 GB bodies: EcoTaxa imports are zips of images.
+# (*.oceanmetrics.io is a wildcard A to this host. ecotaxa.marinebon.app was the
+# first choice but marinebon.app has no wildcard; Ben chose this name, 2026-11-06.)
+ecotaxa.oceanmetrics.io {
+	import access_log ecotaxa
+
+	request_body {
+		max_size 2GB
+	}
+	reverse_proxy ecotaxa-nginx:80
+}
+
 # erddap.oceanmetrics.io: the vhost lives in its own repo (oceanmetrics/erddap,
 # checked out under /share/github, which this container mounts); the erddap
 # compose joins this stack's `server_default` network so `erddap:8080` resolves.
