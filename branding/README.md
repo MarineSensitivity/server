@@ -26,12 +26,16 @@ species app's default taxon), and a school of fish.
 
 Blue `#3AB2E4` is inherited from the original favicon; the ring is `#2F4858`.
 
-## When BOEM becomes MMA
+## The agency label
 
-The agency label is one environment variable:
+The label under the wordmark is one environment variable. It defaults to `MMA` (the Marine Minerals
+Administration, formerly the Bureau of Ocean Energy Management; the set read `BOEM` until
+2026-11-12):
 
 ```sh
-AGENCY=MMA python3 make_branding.py     # or AGENCY= for no agency line at all
+python3 make_branding.py             # TOOLKIT · MMA
+AGENCY= python3 make_branding.py     # no agency line at all
 ```
 
-Re-render, commit, and every product picks it up — nothing else mentions the agency.
+Re-render and commit. The copies in `docs/images/` and `MarineSensitivity.github.io/images/` are
+copied from here by hand, so refresh them in the same change.
