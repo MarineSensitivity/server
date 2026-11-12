@@ -59,7 +59,7 @@
   <circle cx="212" cy="300" r="132" fill="none" stroke="#DDE7EC" stroke-width="11"/>
   <g font-family="Avenir Next, -apple-system, Segoe UI, Helvetica, Arial, sans-serif">
     <text x="400" y="252" font-size="112" font-weight="600" fill="#FFFFFF">Marine Sensitivity</text>
-    <text x="404" y="316" font-size="38" font-weight="500" letter-spacing="7.5" fill="#9DB4C0">TOOLKIT &#183; BOEM</text>
+    <text x="404" y="316" font-size="38" font-weight="500" letter-spacing="7.5" fill="#9DB4C0">TOOLKIT &#183; MMA</text>
     <rect x="404" y="352" width="620" height="12" rx="6" fill="url(#spectral)"/>
     <text x="404" y="424" font-size="34" fill="#C9DAE3">Species distributions and extinction risk,</text>
     <text x="404" y="470" font-size="34" fill="#C9DAE3">scored across US ocean waters.</text>

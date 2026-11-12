@@ -2,18 +2,18 @@
 """Generate the Marine Sensitivity brand set: one source, every variant.
 
     python3 make_branding.py            # writes the SVGs and renders the PNGs
-    AGENCY=MMA python3 make_branding.py # when the agency name changes, re-render
+    AGENCY= python3 make_branding.py    # an agency-free lockup
 
 Why a generator and not hand-kept files: the set is the same three drawings
-(mark, lockup, hero) in light and dark, and the agency label is a string that is
-already scheduled to change (BOEM -> MMA). Hand-maintaining ten SVGs means nine
-of them drift. The mark stays deliberately plain -- it has to survive 16px in a
+(mark, lockup, hero) in light and dark, and the agency label is a string that
+changes (BOEM became MMA in 2026). Hand-maintaining ten SVGs means nine of them
+drift. The mark stays deliberately plain -- it has to survive 16px in a
 browser tab -- and the life and the data motifs live in the bigger pieces, where
 there is room to read them.
 """
 import math, os, subprocess
 
-AGENCY   = os.environ.get("AGENCY", "BOEM")          # "" for an agency-free lockup
+AGENCY   = os.environ.get("AGENCY", "MMA")           # "" for an agency-free lockup
 SEA      = [("0", "#2E8FBE"), ("0.55", "#3AB2E4"), ("1", "#66CDE0")]
 SPECTRAL = ["#5E4FA2","#3288BD","#66C2A5","#ABDDA4","#E6F598","#FFFFBF",
             "#FEE08B","#FDAE61","#F46D43","#D53E4F","#9E0142"]
