@@ -409,6 +409,9 @@ services:
       TITILER_API_CORS_ALLOW_METHODS: "GET,POST,OPTIONS"
       MSENS_CELLID_COG: /share/data/derived/r_cellid_global.tif
       MSENS_DUCKDB:     /share/data/big/v8/serve.duckdb
+      # the mdl_key fast path reads one serve partition over anonymous HTTPS; from the storage host
+      # (R2 migration, 2026-11-13), no longer the S3 origin the factory defaults to
+      MSENS_SERVE_MODEL_CELL: https://storage.oceanmetrics.io/marine-atlas/v8/serve/model_cell
       MSENS_MAX_ROWS:   "1000000"
       MSENS_LRU_SIZE:   "128"
     volumes:

@@ -201,84 +201,14 @@ Disallow: /
 # gazetteer/ prefix is published there first; marine-atlas/ keeps its old links).
 # indicators/ (2026-10-20): the oceanmetrics/indicators catalog (values, manifest,
 # coverage), published daily by that repo's catalog.yml on the macmini runner.
-storage.marinesensitivity.org, storage.oceanmetrics.io {
-	encode zstd gzip
-
+storage.marinesensitivity.org {
+	# 2026-11-13 (R2 migration, Ben's decision 4): storage.oceanmetrics.io has been the Cloudflare Worker
+	# over R2 since 2026-10-23 (oceanmetrics/places worker/), with folder listings of its own, so this
+	# hostname no longer proxies index pages or 302s objects to S3. Everything is a 301 to the same key on
+	# the Ocean Metrics host; the hostname itself retires later. The retired vhost (index pages proxied,
+	# objects 302'd to S3, CORS on the redirect) is in git history before this date.
 	import access_log storage
-
-	# robots.txt inline, BEFORE the bucket handler, so it cannot be lost by an
-	# index regeneration. The catalog pages are welcome in search results; the
-	# objects behind them are not (they are now redirected to S3, but a crawler
-	# that follows the redirect still walks 90,000 of them).
-	handle /robots.txt {
-		header Content-Type "text/plain; charset=utf-8"
-		respond `# Catalog pages: crawl away. Data objects: please do not.
-User-agent: *
-Crawl-delay: 10
-Disallow: /*.tif$
-Disallow: /*.parquet$
-Disallow: /*.duckdb$
-Disallow: /*.pmtiles$
-Disallow: /*.gz$
-Disallow: /*.zip$
-` 200
-	}
-
-	# ONLY the published atlas. The same bucket holds backups/ -- including a
-	# multi-GB database dump -- which is technically public but must not be
-	# advertised or reachable here, even by exact path. This allow-list is the
-	# server-side half of the restriction the index generator applies.
-	@atlas path_regexp atlas ^/(marine-atlas|gazetteer|indicators)(/|$)
-	handle @atlas {
-		# CORS preflight, answered here (a redirect on OPTIONS fails the preflight).
-		# Suffix ranges (bytes=-N, how Parquet readers fetch the footer) and
-		# If-Match / If-None-Match are not CORS-safelisted, so they DO preflight.
-		@preflight method OPTIONS
-		handle @preflight {
-			import s3_cors
-			header Access-Control-Allow-Headers "Range, If-Match, If-None-Match, If-Range, Content-Type"
-			respond 204
-		}
-
-		# folder URL -> the index.html object standing in for a listing
-		@dir path */
-		handle @dir {
-			rewrite * {path}index.html
-			reverse_proxy https://s3.us-east-1.amazonaws.com {
-				header_up Host s3.us-east-1.amazonaws.com
-				rewrite /oceanmetrics.io-public{uri}
-			}
-		}
-
-		# the pages themselves: small, and what a browser needs on this host
-		@page path */index.html */README.md
-		handle @page {
-			reverse_proxy https://s3.us-east-1.amazonaws.com {
-				header_up Host s3.us-east-1.amazonaws.com
-				rewrite /oceanmetrics.io-public{uri}
-			}
-		}
-
-		# everything else is a data object: hand the client to S3, move no bytes
-		handle {
-			import s3_cors
-			header Cache-Control "public, max-age=86400"
-			redir https://s3.us-east-1.amazonaws.com/oceanmetrics.io-public{uri} 302
-		}
-	}
-
-	# the bare host lands on the atlas index
-	redir / /marine-atlas/ 302
-
-	# anything else: refuse, and say where to go
-	handle {
-		header Content-Type "text/plain; charset=utf-8"
-		respond `Not found.
-
-Browsable: /marine-atlas/, /gazetteer/ and /indicators/
-Start here: https://storage.marinesensitivity.org/marine-atlas/
-` 404
-	}
+	redir https://storage.oceanmetrics.io{uri} 301
 }
 
 pgadmin.marinesensitivity.org {
